@@ -15,7 +15,7 @@ import Data.Hashable
 
 import Rosalyn.Executor
 import Rosalyn.Random
-import Rosalyn.Sequencing --Nucleotide stuff.
+import Rosalyn.Sequence
 
 -------------------------
 --PADS data definitions--

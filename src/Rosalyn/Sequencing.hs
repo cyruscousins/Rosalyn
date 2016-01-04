@@ -1,8 +1,7 @@
-{-# LANGUAGE DeriveGeneric, DeriveAnyClass #-}
+{-# LANGUAGE OverloadedStrings, OverloadedLists #-}
 module Rosalyn.Sequencing where
 
-import GHC.Generics (Generic)
-
+import Rosalyn.Sequence
 import Rosalyn.Random
 import Rosalyn.Trees
 import Rosalyn.Executor
@@ -13,12 +12,12 @@ import System.Random
 import Data.List
 import Data.Ratio
 import Data.Char
-import Data.Hashable
 import qualified Data.Map
 import qualified Data.Maybe
 import qualified Data.Graph
 
-import Control.Monad
+import Control.Monad hiding (mapM, sequence)
+import Data.Traversable
 
 import Text.EditDistance
 
@@ -28,109 +27,24 @@ import Numeric
 import Debug.Trace
 import System.IO.Unsafe
 
-
-type Nucleotide = Char
-type Sequence = [Nucleotide]
-
-type Genome = Sequence
-type SRead = Sequence
-
-type ReadSet = [SRead]
-type List a = [a]
-
---Basic nucleotide operations
-
-complement :: Nucleotide -> Nucleotide
-complement 'A' = 'T'
-complement 'T' = 'A'
-complement 'G' = 'C'
-complement 'C' = 'G'
-
-reverseComplement :: [Char] -> [Char]
-reverseComplement = (map complement) . reverse
-
-nucleotides :: [Nucleotide]
-nucleotides = ['A', 'T', 'C', 'G']
-
-randomNucleotide :: Rand Char
-randomNucleotide = Uniform nucleotides
-
+--TODO remove or rename these: they're not particularly useful.
 randomGenomeLen :: Int -> Rand Genome
-randomGenomeLen 0 = Return ""
+randomGenomeLen l = sequence $ (replicate l randomNucleotide)
+--sequence $ fromList (replicate l randomNucleotide)
+--mapM (const randomNucleotide) (emptySequence l) --TODO this wastes a ByteString.  Need a version of mapM that takes ranges.
+
+{-
+randomGenomeLen 0 = Return "" --TODO is there a language extension that allows 
 randomGenomeLen i =
   do n <- randomNucleotide
      g <- randomGenomeLen (pred i)
      return ((:) n g)
+-}
 
 randomGenome :: Rand Int -> Rand Genome
 randomGenome lenD =
   do len <- lenD
      randomGenomeLen len
-
------------
---Quality--
---Quality:
-
-clamp :: (Ord a) => a -> a -> a -> a
-clamp min val max
-  | (min > val) = min
-  | (max < val) = max
-  | otherwise = val
-
---An integral Phred score, used in FASTQ and other data interchange.
---TODO need to refactor: Solexa/Illumina scores aren't actually Phred scores.
---Phred: Q = -10 log10 E
---Solexa/Illumina: Q = -10 log10 (E / (1-E))
-data PhredFormat = Sanger | SolexaIllumina deriving (Eq, Generic, Hashable)
-
-phredChr0 :: PhredFormat -> Char
-phredChr0 Sanger = chr 33
-phredChr0 SolexaIllumina = chr (59 + 5)
-
-phredMinQ :: PhredFormat -> Int
-phredMinQ Sanger = 0
-phredMinQ SolexaIllumina = -5
-
-phredMaxQ :: PhredFormat -> Int
-phredMaxQ Sanger = 93
-phredMaxQ SolexaIllumina = 62
-
---Phred quality scores.
-data Phred = Phred PhredFormat Int deriving (Eq, Generic, Hashable)
-instance Show Phred where
-  show (Phred fmt val) = [chr ((ord $ phredChr0 fmt) + (clamp (phredMinQ fmt) val (phredMaxQ fmt)))]
-
---Continuous Phred score.  Used to convert between probabilities and integral Phred scores.  This representation is nearly lossless as compared to a floating point value, as it is essentially a scaled log probability with an odd base.
-data PhredF = PhredF PhredFormat Prob deriving (Eq, Generic, Hashable)
-instance Show PhredF where
-  show = show . phredFToPhred
-
---TODO: These are wrong for Solexa/Illumina reads, especially for large error probabilities.
-
---TODO rounding to the nearest probability is not the same as rounding to the nearest log probability.  I believe we need to round down after adding log_10 (50) - log_10 (10) ~ .69897.
-phredFToPhred :: PhredF -> Phred
-phredFToPhred (PhredF fmt v)
-  | v < 0 = undefined
-  | v == 1.0 / 0.0 = Phred fmt 1000 --TODO this is totally arbitrary (but represents a very low probability).  This is done because of a strange floor implementation taking infinity onto 0.
-  | otherwise = Phred fmt (floor (v + 0.69897))
-
-probToPhredF :: PhredFormat -> Prob -> PhredF
-probToPhredF fmt p
-  | (p < 0) || (p > 1) = undefined
-  | otherwise = PhredF fmt (-10 * (logBase 10 p))
-
-probToPhred :: PhredFormat -> Prob -> Phred
-probToPhred fmt = phredFToPhred . (probToPhredF fmt)
-
-phredToPhredF :: Phred -> PhredF
-phredToPhredF (Phred fmt v) = PhredF fmt (fromIntegral v)
-
-phredFToProb :: PhredF -> Prob
-phredFToProb (PhredF fmt v) = 10 ** (-v / 10)
-
-phredToProb :: Phred -> Prob
-phredToProb = phredFToProb . phredToPhredF
-
 
 --Basic sequencing function.  Produces a read distributed according to the given distribution.
 sequenceGenomeRead :: Genome -> Rand Int -> Rand SRead
@@ -142,7 +56,7 @@ sequenceGenomeRead g lenD =
 sequenceGenomeReads :: Genome -> Rand Int -> Rand Int -> Rand ReadSet
 sequenceGenomeReads g numD lenD = 
   do num <- numD
-     mapM (const (sequenceGenomeRead g lenD)) [1..num]
+     sequence (replicate num (sequenceGenomeRead g lenD))
 
 mutateP :: Prob -> Nucleotide -> Rand Nucleotide
 mutateP p n = Bind (coinFlip p) (\x -> if x then Return n else randomNucleotide)
@@ -365,7 +279,7 @@ sequenceGenomeReadsBiased g0 regions regionCountD regionLenD sampleLenD mutator 
   do rLen <- regionLenD
      r0 <- (UniformEnum (0, (length g0) - rLen - 1))
      numSamples <- regionCountD
-     samples <- mapM (const $ sequenceGenomeReadAdvanced ((\ (a, b, c) -> b) (trisectList r0 rLen g0)) sampleLenD mutator chmD) [1..numSamples]
+     samples <- sequence (replicate numSamples $ sequenceGenomeReadAdvanced ((\ (a, b, c) -> b) (trisectList r0 rLen g0)) sampleLenD mutator chmD)
      (liftM ((++) samples)) (sequenceGenomeReadsBiased g0 (pred regions) regionCountD regionLenD sampleLenD mutator chmD)
 
 --Turn a single read into a paired read by removing the middle of it and reverse complementing one side of it.
@@ -397,7 +311,7 @@ evaluateAssemblyContigsLD g c = minimum (map (evaluateAssemblyLD g) c)
 --An MM capable of producing complex patterns like those found in genomic DNA.
 dnaHMM :: Prob -> Int -> (Rand (HiddenMarkovModel Int Nucleotide))
 dnaHMM stayProb hiddenStates =
-  do transitions <- mapM (const $ randomDistribution [0..(pred hiddenStates)]) [0..(pred hiddenStates)]
-     emissions <- mapM (const $ randomDistribution nucleotides) [1..hiddenStates]
+  do transitions <- sequence (replicate hiddenStates $ randomDistribution [0..(pred hiddenStates)])
+     emissions <- sequence (replicate hiddenStates $ randomDistribution nucleotides)
      return $ HiddenMarkovModel (MarkovModel (\s -> Bind (Flip stayProb) (\x -> if x then Return s else (!!) transitions s))) ((!!) emissions)
 
