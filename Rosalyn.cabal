@@ -22,7 +22,7 @@ library
     containers, array,
     biocore, bioalign,
     edit-distance
-    --QuickCheck, QuickSpec
+    --QuickCheck--, QuickSpec
     --pads,
     --pads-haskell
     --,bioinformatics-toolkit
@@ -32,16 +32,17 @@ executable Rosalyn-exe
   hs-source-dirs:      app
   main-is:             Main.hs
   ghc-options:         -O2 -threaded -rtsopts -with-rtsopts=-N
-  build-depends:       base
-                     , Rosalyn
+  build-depends:       base,
+                       Rosalyn
   default-language:    Haskell2010
 
 test-suite Rosalyn-test
   type:                exitcode-stdio-1.0
   hs-source-dirs:      test
   main-is:             Spec.hs
-  build-depends:       base
-                     , Rosalyn
+  build-depends:       base,
+                       Rosalyn,
+                       QuickCheck
   ghc-options:         -O2 -threaded -rtsopts -with-rtsopts=-N
   default-language:    Haskell2010
 
