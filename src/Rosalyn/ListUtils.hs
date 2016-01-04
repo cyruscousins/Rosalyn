@@ -1,5 +1,7 @@
 module Rosalyn.ListUtils where
 
+import Data.List
+
 --This module contains utility functions for lists, tuples, and other common constructs.
 --Ideally, all of these can be replaced with existing libraries.
 
@@ -48,4 +50,28 @@ intraInterUnorderedPairs (a:l) =
 
 indexList :: [a] -> [(Int, a)]
 indexList = zip [0..]
+
+countAdj :: (Eq a) => [a] -> [(a, Int)]
+countAdj [] = []
+countAdj a =
+  let countAdj' [] i v = [(v, i)]
+      countAdj' (x:l) i v
+       | x == v = countAdj' l (succ i) v
+       | otherwise = (v, i) : (countAdj' l 1 x)
+   in countAdj' (tail a) 1 (head a)
+
+count :: (Eq a, Ord a) => [a] -> [(a, Int)]
+count = sort . countAdj
+
+--TODO implement lexicographic sort.  Can be efficient that ordinary sort on lists.
+lexicographicSort :: (Ord a) => [a] -> [a]
+lexicographicSort = sort
+
+--Merge 2 sorted lists to produce a sorted list consisting of the elemnents of the concatenation of the original two lists.
+merge :: (Ord a) => [a] -> [a] -> [a]
+merge a [] = a
+merge [] b = b
+merge a@(ai:al) b@(bi:bl)
+ | ai <= bi = ai : (merge al b)
+ | otherwise = bi : (merge a bl) 
 

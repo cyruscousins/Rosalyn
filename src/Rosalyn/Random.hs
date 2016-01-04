@@ -150,8 +150,7 @@ instance Monad Rand where
 --Creator functions:
 fromSortedList :: (Ord a) => [a] -> Rand a
 fromSortedList a =
-  let grouped = group a
-      counted = map (\l -> (head l, length l)) grouped
+  let counted = countAdj a
       total = sum (map snd counted)
       weighted = map (\(a, b) -> (a, (fromIntegral b) / (fromIntegral total))) counted
    in WeightedOrd $ Data.Map.fromList weighted
@@ -612,7 +611,7 @@ symKlDiscrete (WeightedOrd m0) (WeightedOrd m1) =
 --Jensen-Shannon divergences.
 jensenShannonList :: (Eq a, Ord a) => [(a, Prob)] -> [(a, Prob)] -> Prob
 jensenShannonList p q =
-  let grouped = groupWith fst $ sort (p ++ q) --TODO a merge function would be much faster.
+  let grouped = groupWith fst $ merge p q
       m = map (\ l -> ((fst . head) l, (sum (map snd l)) / 2)) grouped
    in avg2 (fromJust $ klDiscreteList p m) (fromJust $ klDiscreteList q m)
 
