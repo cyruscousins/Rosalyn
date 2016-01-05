@@ -1,3 +1,4 @@
+{-# LANGUAGE FlexibleInstances #-}
 module Rosalyn.Trees where
 
 import Rosalyn.Random
@@ -66,11 +67,13 @@ bstInsertMulti n l = foldl (\ t i -> bstInsert t i) n l
 bstFromList :: (Ord a) => List a -> BinaryTree a
 bstFromList l = bstInsertMulti Empty l
 
-randomTreeShape :: (Rand Int) -> Rand (BinaryTree())
-randomTreeShape sizeDist =
-  do count <- sizeDist
-     shuffle <- shuffleList [1..count]
-     return (fmap (const ()) (bstFromList shuffle))
+instance Randomizable (BinaryTree ()) where
+  sizedRandom size =
+    do shuffle <- shuffleList [1..size]
+       return (fmap (const ()) (bstFromList shuffle))
+
+
+--TODO instance IsList
 
 --In order traversal.
 inOrder :: BinaryTree a -> [a]

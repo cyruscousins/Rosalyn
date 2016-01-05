@@ -71,8 +71,8 @@ introduceReadError = mapM
 sequenceGenome :: Genome -> Int -> Int -> StdGen -> ReadSet
 sequenceGenome _ _ 0 _ = []
 sequenceGenome g l c g0 =
-  let (s, g1) = (randomR (0, (-) (length g) l) g0) :: (Int, StdGen)
-      (f, g2) = (random g1) :: (Bool, StdGen)
+  let (s, g1) = sample (UniformEnum (0, (length g) - l)) g0
+      (f, g2) = (sample UniformBounded g1) :: (Bool, StdGen)
       ss = (take l) . (drop s) $ g
       ss' = if f then reverse ss else ss
    in (:) ss' (sequenceGenome g l (pred c) g2)
@@ -225,18 +225,19 @@ readSetDistanceMatrix i r = kmersetDistanceMatrix $ map (kmerizeReadSetMS i) r
 descentWithModification :: BinaryTree () -> a -> (a -> Rand a) -> Rand (BinaryTree a)
 descentWithModification Empty _ _ = Return Empty
 descentWithModification (Node () c0 c1) v f =
-  do v0 <- f v
-     v1 <- f v
-     c0' <- descentWithModification c0 v0 f
-     c1' <- descentWithModification c1 v1 f
+  do v0 <- f v ;
+     v1 <- f v ;
+     c0' <- descentWithModification c0 v0 f ;
+     c1' <- descentWithModification c1 v1 f ;
      return $ Node v c0' c1' ;
 
---Distribution over initial genome sizes.
+--Distribution over initial genomes.
 --Distribution over phylogeny sizes.
-randomGenomePhylogeny :: Rand Int -> Rand Int -> Rand (BinaryTree (Maybe Genome))
-randomGenomePhylogeny genomeSize phylogenySize = 
-  do treeStructure <- randomTreeShape phylogenySize
-     g0 <- randomGenome genomeSize
+randomGenomePhylogeny :: Rand Genome -> Rand Int -> Rand (BinaryTree (Maybe Genome))
+randomGenomePhylogeny genomeD phylogenySizeD = 
+  do phylogenySize <- phylogenySizeD
+     treeStructure <- sizedRandom phylogenySize
+     g0 <- genomeD
      fmap (treeContract . dropInternal) (descentWithModification treeStructure g0 mutateGenome)
 
 {-

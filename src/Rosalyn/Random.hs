@@ -9,7 +9,7 @@ import Data.Maybe
 import Data.Array.Unboxed
 import qualified Data.Map
 
-import System.Random
+import System.Random hiding (random)
 
 import Control.Monad
 
@@ -561,10 +561,15 @@ normalizeCumulativeDensities l =
 --Randomizers.  These allow us to generate random distributions of things.
 
 class Randomizable a where
-  randomize :: a -> Rand (Rand a)
-
-class SizedRandomizable a where
-  randomizeSized :: Int -> Rand (Rand a)
+  random :: Rand a
+  random = undefined --TODO
+--    do size <- (Geometric 1)
+--       randomizeSized size
+  sizedRandom :: Int -> Rand a
+  randomDist :: Rand (Rand a)
+  randomDist = Return random
+  sizedRandomDist :: Int -> Rand (Rand a)
+  sizedRandomDist = Return . sizedRandom
 
 --Draw uniformly from the set of distributions over the elements of [a].
 randomDistribution :: [a] -> Rand (Rand a)
