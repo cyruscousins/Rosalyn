@@ -7,7 +7,7 @@ import Rosalyn.ListUtils
 import Data.List
 import Data.Maybe
 import Data.Array.Unboxed
-import qualified Data.Map
+import qualified Data.Map.Strict as Data.Map
 
 import System.Random hiding (random)
 
@@ -577,7 +577,7 @@ randomDistribution values =
   do cumDensities <- mapM (const (UniformReal (0, 1))) values
      let normCumDensities = normalizeCumulativeDensities cumDensities
          paired = zip values normCumDensities
-         sorted = sortWith snd paired
+         sorted = sortWith snd paired --TODO this is a bottleneck.
       in return $ WeightedCMF sorted
 
 randomSplit :: [a] -> Rand ([a], [a])
@@ -612,6 +612,8 @@ symKlDiscrete (WeightedOrd m0) (WeightedOrd m1) =
   let mTup = (m0, m1)
       (l0, l1) = mapT2 Data.Map.toList mTup
    in symKlDiscreteList l0 l1
+
+--TODO add KL divergence with pseudocount functions.
 
 --Jensen-Shannon divergences.
 jensenShannonList :: (Eq a, Ord a) => [(a, Prob)] -> [(a, Prob)] -> Prob

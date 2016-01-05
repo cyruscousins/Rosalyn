@@ -63,11 +63,11 @@ countAdj a =
 count :: (Eq a, Ord a) => [a] -> [(a, Int)]
 count = sort . countAdj
 
---TODO implement lexicographic sort.  Can be efficient that ordinary sort on lists.
+--TODO implement lexicographic sort.  Can be more efficient that ordinary sort on lists.
 lexicographicSort :: (Ord a) => [a] -> [a]
 lexicographicSort = sort
 
---Merge 2 sorted lists to produce a sorted list consisting of the elemnents of the concatenation of the original two lists.
+--Merge 2 sorted lists to produce a sorted list consisting of the elements of the concatenation of the original two lists.
 merge :: (Ord a) => [a] -> [a] -> [a]
 merge a [] = a
 merge [] b = b
@@ -75,3 +75,10 @@ merge a@(ai:al) b@(bi:bl)
  | ai <= bi = ai : (merge al b)
  | otherwise = bi : (merge a bl) 
 
+--Returns a list of all lists of the given length consisting of the given elements.
+allLists :: Int -> [a] -> [[a]]
+allLists 0 _ = [[]]
+allLists l v = v >>= (\x -> map ((:) x) (allLists (pred l) v))
+
+allListsSorted :: (Ord a) => Int -> [a] -> [[a]]
+allListsSorted i vals = allLists i (sort vals)
