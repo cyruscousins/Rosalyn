@@ -17,7 +17,7 @@ library
   hs-source-dirs:      src
   exposed-modules:     Lib,
                        Rosalyn.Executor,
-                       Rosalyn.Sequence, Rosalyn.Sequencing, Rosalyn.Trees, Rosalyn.Distance,
+                       Rosalyn.Sequence, Rosalyn.Sequencing, Rosalyn.Trees, Rosalyn.Distance, Rosalyn.Phylogeny,
                        Rosalyn.Random,
                        Rosalyn.ListUtils,
                        Rosalyn.External.Spades,

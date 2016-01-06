@@ -2,6 +2,7 @@ module Main where
 
 import Rosalyn.Random
 import Rosalyn.Sequencing
+import Rosalyn.Phylogeny
 
 import Experiment.Experiment
 

@@ -204,6 +204,7 @@ readsetDistance k a b =
       rs1 = kmerizeReadSetMS k b
    in generalizedJacardMultiset rs0 rs1
 
+--TODO use distance matrix module for this.
 kmersetDistanceMatrix :: [Multiset Kmer] -> (Int -> Int -> Ratio Int)
 kmersetDistanceMatrix items =
   let l = length items
@@ -221,45 +222,6 @@ kmersetDistanceMatrix items =
 
 readSetDistanceMatrix :: Int -> [ReadSet] -> (Int -> Int -> Ratio Int)
 readSetDistanceMatrix i r = kmersetDistanceMatrix $ map (kmerizeReadSetMS i) r
-
-descentWithModification :: BinaryTree () -> a -> (a -> Rand a) -> Rand (BinaryTree a)
-descentWithModification Empty _ _ = Return Empty
-descentWithModification (Node () c0 c1) v f =
-  do v0 <- f v ;
-     v1 <- f v ;
-     c0' <- descentWithModification c0 v0 f ;
-     c1' <- descentWithModification c1 v1 f ;
-     return $ Node v c0' c1' ;
-
---Distribution over initial genomes.
---Distribution over phylogeny sizes.
-randomGenomePhylogeny :: Rand Genome -> Rand Int -> Rand (BinaryTree (Maybe Genome))
-randomGenomePhylogeny genomeD phylogenySizeD = 
-  do phylogenySize <- phylogenySizeD
-     treeStructure <- sizedRandom phylogenySize
-     g0 <- genomeD
-     fmap (treeContract . dropInternal) (descentWithModification treeStructure g0 mutateGenome)
-
-{-
---Rooted binary phylogeny with no internal nodes.
-data Phylogeny a = Node (Phylogeny a) (Phylogeny a) | Leaf a deriving Show
-
-neighborJoining :: (Num n) => (a -> a -> n) -> [a] -> Phylogeny a
-neighborJoining = undefined
-
-randomPhylogeny :: Genome -> Prob -> StdGen -> (Phylogeny Genome, StdGen)
-randomPhylogeny g b 0 r0 =
-  let (f, r1) = randomR (0 :: Prob, 1) r0
-   in if ((<=) f b) 
-
-  let (g1, r1) (g, r)
-randomPhylogeny g i r0 =
-  let im1 = pred i
-      
-      (c0, r1) = randomPhylogeny im1 r0
-      (c1, r2) = 
--}
-
 
 --Sequence with reverse complementing, mutations, and chimers.
 sequenceGenomeReadAdvanced :: Genome -> (Rand Int) -> (String -> Rand String) -> (Rand Bool) -> (Rand SRead)
@@ -309,7 +271,7 @@ evaluateAssemblyLD a b = min (levenshteinDistance defaultEditCosts a b) (levensh
 evaluateAssemblyContigsLD :: Genome -> [Genome] -> Int
 evaluateAssemblyContigsLD g c = minimum (map (evaluateAssemblyLD g) c)
 
---An MM capable of producing complex patterns like those found in genomic DNA.
+--An HMM capable of producing complex patterns like those found in genomic DNA.
 dnaHMM :: Prob -> Int -> (Rand (HiddenMarkovModel Int Nucleotide))
 dnaHMM stayProb hiddenStates =
   do transitions <- sequence (replicate hiddenStates $ randomDistribution [0..(pred hiddenStates)])

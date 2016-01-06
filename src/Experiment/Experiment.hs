@@ -5,6 +5,7 @@ import Rosalyn.Random
 import Rosalyn.Sequence
 import Rosalyn.Sequencing
 import Rosalyn.ListUtils
+import Rosalyn.Phylogeny
 
 import Rosalyn.Trees
 import Rosalyn.Executor
