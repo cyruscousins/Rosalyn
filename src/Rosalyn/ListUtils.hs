@@ -9,6 +9,7 @@ import Data.List
 --Tuples
 
 --Map over both elements of a 2-tuple.
+--TODO use Template Haskell for this and generalizations.
 mapT2 :: (a -> b) -> (a, a) -> (b, b)
 mapT2 f (x, y) = (f x, f y)
 
@@ -16,6 +17,7 @@ mapT2 f (x, y) = (f x, f y)
 --Lists
 
 --Calculate the cartesian products of (multi)sets a and b.
+--Result is lexicographically sorted with respect to a then b.
 cartesianProduct :: [a] -> [b] -> [(a, b)]
 cartesianProduct [] b = []
 cartesianProduct (a:al) b = (map ((,) a) b) ++ (cartesianProduct al b)
@@ -76,9 +78,25 @@ merge a@(ai:al) b@(bi:bl)
  | otherwise = bi : (merge a bl) 
 
 --Returns a list of all lists of the given length consisting of the given elements.
+--This function may be thought of as a Cartesian exponent.
+--If the input is list is sorted, the output is lexicographically sorted.
 allLists :: Int -> [a] -> [[a]]
 allLists 0 _ = [[]]
 allLists l v = v >>= (\x -> map ((:) x) (allLists (pred l) v))
 
 allListsSorted :: (Ord a) => Int -> [a] -> [[a]]
 allListsSorted i vals = allLists i (sort vals)
+
+--TODO use TemplateHaskell for these.
+allTriples :: [a] -> [(a, a, a)]
+allTriples a =
+  let lists = allLists 3 a
+      listToTriple (a:b:c:[]) = (a, b, c)
+   in map listToTriple lists
+
+allQuadrouples :: [a] -> [(a, a, a, a)]
+allQuadrouples a =
+  let lists = allLists 4 a
+      listToQuad (a:b:c:d:[]) = (a, b, c, d)
+   in map listToQuad lists
+

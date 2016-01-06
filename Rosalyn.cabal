@@ -15,13 +15,20 @@ cabal-version:       >=1.10
 
 library
   hs-source-dirs:      src
-  exposed-modules:     Lib, Rosalyn.Executor, Rosalyn.Sequence, Rosalyn.Sequencing, Rosalyn.Random, Rosalyn.ListUtils, Rosalyn.External.Spades, Rosalyn.Trees, Experiment.Experiment
+  exposed-modules:     Lib,
+                       Rosalyn.Executor,
+                       Rosalyn.Sequence, Rosalyn.Sequencing, Rosalyn.Trees, Rosalyn.Distance,
+                       Rosalyn.Random,
+                       Rosalyn.ListUtils,
+                       Rosalyn.External.Spades,
+                       Experiment.Experiment
   build-depends:       base >= 4.7 && < 5,
     hashable, directory, process,
     random,
     containers, array, bytestring,
     biocore, bioalign,
     edit-distance
+    --hmm
     --QuickCheck--, QuickSpec
     --pads,
     --pads-haskell

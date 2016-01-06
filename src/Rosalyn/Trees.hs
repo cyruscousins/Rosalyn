@@ -80,6 +80,7 @@ inOrder :: BinaryTree a -> [a]
 inOrder Empty = []
 inOrder (Node v c0 c1) = (inOrder c0) ++ ((:) v (inOrder c1))
 
+--TODO redundant wih listUtils.
 indexList :: [a] -> [(a, Int)]
 indexList l0 =
   let indexList' [] _ = []
