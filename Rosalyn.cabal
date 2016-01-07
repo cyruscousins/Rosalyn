@@ -28,6 +28,7 @@ library
     containers, array, bytestring,
     biocore, bioalign,
     edit-distance
+    --bed-and-breakfast
     --hmm
     --QuickCheck--, QuickSpec
     --pads,

@@ -44,3 +44,9 @@ randomPhylogeny g i r0 =
       (c1, r2) = 
 -}
 
+--Given initial genome, size of tree, and mutations per construct a random phylogeny tree.
+randomPhylogeny :: Genome -> Int -> Int -> Rand (BinaryTree Genome)
+randomPhylogeny g0 tSize mCount =
+  do treeShape <- sizedRandom tSize
+     descentWithModification treeShape g0 (mutateGenomeIterated mCount)
+

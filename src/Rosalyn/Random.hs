@@ -18,6 +18,8 @@ import GHC.Exts -- sortWith
 --TODO This should be a typeclass.
 type Prob = Double
 
+--TODO type families may help with efficient representations.
+
 --class Sample 
 
 {-

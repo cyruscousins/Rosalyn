@@ -2,13 +2,18 @@
 module Rosalyn.Trees where
 
 import Rosalyn.Random
+import Rosalyn.Distance
+import Rosalyn.ListUtils
 
+import Data.Tuple
 import Data.Maybe
 import qualified Data.Graph
 
 type List a = [a]
 
-data BinaryTree a = Node a (BinaryTree a) (BinaryTree a) | Empty
+data BinaryTree a = Empty | Node a (BinaryTree a) (BinaryTree a)
+
+type WeightedBinaryTree a = BinaryTree (a, Double)
 
 instance Functor BinaryTree where
   fmap f (Node a c0 c1) = (Node (f a) (fmap f c0) (fmap f c1))
@@ -80,22 +85,25 @@ inOrder :: BinaryTree a -> [a]
 inOrder Empty = []
 inOrder (Node v c0 c1) = (inOrder c0) ++ ((:) v (inOrder c1))
 
---TODO redundant wih listUtils.
-indexList :: [a] -> [(a, Int)]
-indexList l0 =
-  let indexList' [] _ = []
-      indexList' (a:l) i = (:) (a, i) (indexList' l (succ i))
-   in indexList' l0 0
-
+--Indices 
 indexTree :: BinaryTree a -> [(a, Int)]
-indexTree = (indexList . inOrder)
+indexTree = ((map swap) . (indexList . inOrder))
 
-indexTreeNonempty :: BinaryTree (Maybe a) -> [(a, Int)]
+indexTreeNonempty :: BinaryTree (Maybe a) -> [(Int, a)]
 indexTreeNonempty t =
   let ordered = inOrder t
       nonEmpty = map fromJust $ filter isJust ordered
       indexed = indexList nonEmpty
    in indexed
+
+indexTreeInline :: BinaryTree a -> BinaryTree (a, Int)
+indexTreeInline r =
+  let traverse Empty i = (Empty, i)
+      traverse (Node v lc rc) i =
+        let (lc', i')  = traverse lc i
+            (rc', i'') = traverse rc (succ i')
+            in (Node (v, i') lc' rc', i'')
+   in fst $ traverse r (0 :: Int)
 
 augmentIndices :: BinaryTree a -> BinaryTree (a, Int)
 augmentIndices t =
@@ -107,6 +115,28 @@ augmentIndices t =
          in (n, i'')
       (augmentedIndices, top) = augmentIndices' t (0 :: Int)
    in augmentedIndices
+
+parentChildPairs :: BinaryTree a -> [(a, a)]
+parentChildPairs Empty = []
+parentChildPairs (Node r lc rc) =
+  let parentChildPairs' p Empty = []
+      parentChildPairs' p (Node c lc rc) = (parentChildPairs' c lc) ++ [(p, c)] ++ (parentChildPairs' c rc)
+   in (parentChildPairs' r lc) ++ (parentChildPairs' r rc)
+
+--Convert a binary tree to a distance matrix, using the given edge weight as a constant distance.
+treeDistanceMatrix :: (a -> Double) -> BinaryTree a -> DistanceMatrix
+treeDistanceMatrix f t =
+  let indexedTree = indexTreeInline t
+      indices = inOrder $ fmap snd indexedTree --TODO could just use size to calculate this.
+      pairs = parentChildPairs indexedTree
+      distances = map (\ ((a0, i0), (a1, i1)) -> (f a0, (i0, i1))) pairs
+   in createAdditiveDistanceMatrixFromDistances indices distances
+
+constantWeightTreeDistanceMatrix :: Double -> BinaryTree a -> DistanceMatrix
+constantWeightTreeDistanceMatrix edgeWeight = treeDistanceMatrix (const edgeWeight)
+
+weightedTreeDistanceMatrix :: WeightedBinaryTree a -> DistanceMatrix
+weightedTreeDistanceMatrix = treeDistanceMatrix snd
 
 --Graphs
 treeGraph :: BinaryTree (a, Int) -> Data.Graph.Graph

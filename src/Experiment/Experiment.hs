@@ -214,9 +214,15 @@ readsetEvaluationExperiment =
              --(intraF, interF) = (filter ((<=) 0) intra, filter ((<=) 0) inter)
           in return (evaluation, auroc intra inter)
 
+--This experiment evaluates distance matrices in a phylogenetic context.
+
+
+
+
 --Given initial genome, size of tree, and mutations per construct a random phylogeny tree.
 randomPhylogeny :: Genome -> Int -> Int -> Rand (BinaryTree Genome)
 randomPhylogeny g0 tSize mCount =
   do treeShape <- sizedRandom tSize
      descentWithModification treeShape g0 (mutateGenomeIterated mCount)
+
 

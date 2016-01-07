@@ -108,17 +108,44 @@ isAdditiveMatrix dm = (isValidMatrix dm) && (checkAdditivity dm)
 --------------------------
 --Distance matrix creation
 
+--1 + 2 + ... + i
+triangularSum :: (Integral i) => i -> i
+triangularSum i = div (i * (i + 1)) 2
+
+--How many cells do we need to store in an i x i distance matrix?
+dmCellCount :: (Integral i) => i -> i
+dmCellCount i = triangularSum (pred i)
+
 createDistanceMatrixFromIndexed :: Int -> [(a, Int)] -> (a -> a -> Double) -> DistanceMatrix
 createDistanceMatrixFromIndexed size l df =
   let pairs = allPairsUnordered l
       pairToArrDat ((a0, i0), (a1, i1)) = (matrixIndex size (i1, i0), df a0 a1)
       arrDat = map pairToArrDat pairs
-      arrSize = div ((size - 1) * (size - 0)) 2
+      arrSize = dmCellCount size
       arr = array (0, (pred arrSize)) arrDat
    in DistanceMatrix size arr
 
 createDistanceMatrix :: [a] -> (a -> a -> Double) -> DistanceMatrix
 createDistanceMatrix a = createDistanceMatrixFromIndexed (length a) (map swap $ indexList a)
+
+createDistanceMatrixFromDistances :: Int -> [(Double, (Int, Int))] -> DistanceMatrix
+createDistanceMatrixFromDistances size l =
+  let arrSize = dmCellCount size
+      arrDat = map (\ (d, c) -> (matrixIndex size c, d)) l
+      arr = array (0, pred arrSize) arrDat
+   in DistanceMatrix arrSize arr
+
+
+--Given pairwise distances between adjacent tree nodes, fill out the distance matrix.
+--calculateAdditiveDistances :: Int -> Int -> --TODO keep going.
+--TODO very inefficient.  Also results in an infinite loop for cyclic graphs.
+createAdditiveDistanceMatrixFromDistances :: [a] -> [(Double, (Int, Int))] -> DistanceMatrix 
+createAdditiveDistanceMatrixFromDistances vals distances =
+  let calculateDistances a b p
+       | a == b = [0]
+       | otherwise = concat $ map (\ (v, (x0, x1)) -> fmap ((+) v) (calculateDistances (if x0 == a then x1 else x0) b a)) $ filter (\ (d, (x0, x1)) -> (x0 == a && x1 /= p) || (x1 == a && x0 /= p)) distances
+      calculateDistance a b = head (calculateDistances a b a)
+   in createDistanceMatrix [0..((pred . length) vals)] calculateDistance
 
 ----------------------------
 --Distance matrix operations
