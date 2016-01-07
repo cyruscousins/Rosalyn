@@ -1,6 +1,8 @@
 {-# LANGUAGE OverloadedStrings, OverloadedLists #-}
 module Rosalyn.Sequencing where
 
+import GHC.Exts
+
 import Rosalyn.Sequence
 import Rosalyn.Random
 import Rosalyn.Trees
@@ -29,7 +31,16 @@ import System.IO.Unsafe
 
 --TODO remove or rename these: they're not particularly useful.
 randomGenomeLen :: Int -> Rand Genome
-randomGenomeLen l = sequence $ (replicate l randomNucleotide)
+randomGenomeLen l =
+  let replicated :: [Rand Nucleotide]
+      replicated = (replicate l randomNucleotide)
+      sequenced :: Rand [Nucleotide]
+      sequenced = sequence replicated
+      fl :: [Nucleotide] -> Genome
+      fl = GHC.Exts.fromList
+      packed :: Rand Genome
+      packed = fmap fl sequenced
+   in packed
 --sequence $ fromList (replicate l randomNucleotide)
 --mapM (const randomNucleotide) (emptySequence l) --TODO this wastes a ByteString.  Need a version of mapM that takes ranges.
 

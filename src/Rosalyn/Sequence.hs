@@ -1,4 +1,4 @@
-{-# LANGUAGE DeriveGeneric, DeriveAnyClass, TypeSynonymInstances, OverloadedLists, TypeFamilies, CPP #-}
+{-# LANGUAGE DeriveGeneric, DeriveAnyClass, StandaloneDeriving, TypeSynonymInstances, OverloadedLists, TypeFamilies, CPP, MultiParamTypeClasses #-}
 module Rosalyn.Sequence where 
 
 --This module contains code for interacting with DNA sequences.
@@ -6,10 +6,17 @@ module Rosalyn.Sequence where
 
 import GHC.Generics (Generic)
 import GHC.Exts
+import GHC.Word
 
 import Data.Char
 import Data.Hashable
 import Data.String
+import Data.Word
+import Data.Int
+
+import Prelude hiding (map, length, replicate, reverse)
+--import Prelude hiding (length, head, last, null, tail, map, filter, concat, any, lookup, init, all, foldl, foldr, foldl1, foldr1, maximum, minimum, iterate, span, break, takeWhile, dropWhile, reverse, zip, zipWith, sequence, sequence_, mapM, mapM_, concatMap, and, or, sum, product, repeat, replicate, cycle, take, drop, splitAt, elem, notElem, unzip, lines, words, unlines, unwords)
+import Data.ListLike
 
 --import qualified Data.ByteString
 import qualified Data.ByteString.Lazy
@@ -19,6 +26,7 @@ import Rosalyn.Random
 
 type Nucleotide = Char
 
+-- #define BIO_CORE_SEQUENCE
 #ifdef BIO_CORE_SEQUENCE
 --TODO preprocessor control: given an option to use a [Char]
 type Sequence = SeqData
@@ -28,12 +36,60 @@ instance Hashable Sequence where --TODO can this be expressed more succinctly?
   hash (SeqData s) = hash (Data.ByteString.Lazy.unpack s)
 
 --Instance the IsList class.  This allows the use of Sequence as an overloaded list.  Buckle up; it's going to be a rough ride.
---The strategy is very unclean, as the definition only holds for lists of bytes.
---TODO
+--TODO use Data.ByteString's implementation.
 instance IsList Sequence where
   type (Item Sequence) = Char
-  fromList l = undefined SeqData $ Data.ByteString.Lazy.pack l
-  toList (SeqData s) = undefined--Data.ByteString.Lazy.unpack s
+  fromList l = SeqData $ Data.ByteString.Lazy.pack (map (fromIntegral . ord) l) --TODO make sure this isn't packing integers into 4 bytes.
+  toList (SeqData s) = map (chr . fromIntegral) $ Data.ByteString.Lazy.unpack s
+
+--TODO can we instance IsList multiple times for different types?
+--This would provide substantially more transparancy.
+
+
+--instance (IsList a) => ListLike a where
+--instance ListLike Sequence Word8 where
+
+--TODO: These are nice, but they don't actually do anything.
+--Need to use Data.ByteString implementations.
+instance FoldableLL Sequence Word8
+instance ListLike Sequence Word8
+instance ListLikeIO Sequence Word8
+instance StringLike Sequence Word8 --Redundant with IsString.
+
+--TODO there is a GHC bug, should be reported:
+{-
+  deriving instance ListLike Sequence Word8
+
+  Seems to be incompatible with GHC.Word, StandaloneDeriving, and DeriveAnyClass.
+  
+  Probably an issue to do with deriving, aggravated by using so many language extension, and primitives.
+-}
+
+--newtype Int2 = Int2 Int
+--deriving instance Num Int2
+
+{-
+newtype SeqData = SeqData Data.ByteString.Lazy deriving (Eq, ..., ListLike) --I think.
+
+
+SeqData in Bio.Core
+
+Data.ByteString in ByteString
+
+ListLike in ListLike
+
+Sequence in Rosalyn
+
+instance ListLike Sequence
+-}
+
+packSequence :: [Nucleotide] -> Sequence
+packSequence l = SeqData $ Data.ByteString.Lazy.pack (map (fromIntegral . ord) l)
+--TODO we need more than just IsList, make a typeclass abstracting all basic list functions if possible.  Look into ListLike package.
+
+--TODO need an instance of traversable.  It should really be functionality of the bytestring function, but is not.
+--instance Traversable Sequence where
+--  traverse 
 
 --Used mostly for mapping: ideally this construct should not be used as it is inherently inefficient.
 emptySequence :: Int -> Sequence
