@@ -1,5 +1,7 @@
-{-# LANGUAGE FlexibleInstances #-}
+{-# LANGUAGE FlexibleInstances, TypeFamilies #-}
 module Rosalyn.Trees where
+
+import GHC.Exts
 
 import Rosalyn.Random
 import Rosalyn.Distance
@@ -72,13 +74,43 @@ bstInsertMulti n l = foldl (\ t i -> bstInsert t i) n l
 bstFromList :: (Ord a) => List a -> BinaryTree a
 bstFromList l = bstInsertMulti Empty l
 
+--Produce a random (empty) binary tree structure.
 instance Randomizable (BinaryTree ()) where
   sizedRandom size =
     do shuffle <- shuffleList [1..size]
        return (fmap (const ()) (bstFromList shuffle))
 
+--Instance IsList to allow list syntax for binary trees.  Here we assume that elements are ordered, and a binary tree is desired.
+instance (Ord a) => IsList (BinaryTree a) where
+  type Item (BinaryTree a) = a
+  fromList = bstFromList
+  toList   = inOrder
 
---TODO instance IsList
+--TODO making a BST is somewhat arbitrary.
+
+
+--TODO can we give an alternative instance of IsList for Tuples and/or lists to allow Lisplike tree definitions?
+--TODO can we instance ListLike?
+
+--The zip operation on trees: where tree structure overlaps, combine data.
+--TODO is there a typeclass for this?
+zipTree :: BinaryTree a -> BinaryTree b -> BinaryTree (a, b)
+zipTree (Node va lca rca) (Node vb lcb rcb) = Node (va, vb) (zipTree lca lcb) (zipTree rca rcb)
+
+--Zips a tree and a list with in order traversal.
+--TODO define better behavior when sizes don't match.
+zipTreeList :: BinaryTree a -> [b] -> BinaryTree (a, b)
+zipTreeList r vals =
+  let ztl' Empty v = (Empty, v)
+      ztl' (Node a lc rc) v =
+        let (lc', v') = ztl' lc v
+            (rc', v'') = ztl' rc (tail v')
+            nn = Node (a, head v') lc' rc'
+         in (nn, v'')
+      (t, _) = ztl' r vals
+   in t
+
+--TODO instance traverseable: we absolutely need to sequence and mapM on trees of randoms!
 
 --In order traversal.
 inOrder :: BinaryTree a -> [a]

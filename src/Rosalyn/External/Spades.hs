@@ -53,7 +53,7 @@ seqRE = REd "[^\0]+" " "
 data CoverageCutoff = Auto | Off | Cutoff Float deriving (Eq, Generic, Hashable)
 --data PhredOffset = P33 | P64
 data SpadesConfig = SpadesConfig {
-  sc :: Bool, ionTorrent :: Bool, 
+  sc :: Bool, ionTorrent :: Bool,
   onlyErrorCorrection :: Bool, onlyAssembly :: Bool,
   careful :: Bool, disableRR :: Bool, --Note: Careful turns on error correction, and is recommended.
   coverageCutoff :: CoverageCutoff, k :: [Int]

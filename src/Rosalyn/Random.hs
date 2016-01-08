@@ -1,4 +1,4 @@
-{-# LANGUAGE GADTs, ExistentialQuantification, InstanceSigs, ScopedTypeVariables #-}
+{-# LANGUAGE GADTs, ExistentialQuantification, InstanceSigs, ScopedTypeVariables, TypeFamilies #-}
 
 module Rosalyn.Random where
 
@@ -157,8 +157,11 @@ fromSortedList a =
       weighted = map (\(a, b) -> (a, (fromIntegral b) / (fromIntegral total))) counted
    in WeightedOrd $ Data.Map.fromList weighted
 
-fromList :: (Ord a) => [a] -> Rand a
-fromList = fromSortedList . sort
+instance (Ord a) => IsList (Rand a) where
+  type Item (Rand a) = a
+  --fromList :: (Ord a) => [a] -> Rand a
+  fromList = fromSortedList . sort
+  toList r = map fst (sampleStream r gen0)
 
 
 --Given a list of cumulative masses, produce an array representation.
@@ -199,7 +202,7 @@ trySample (WeightedCMF l) g0 =
    in (Just a, g1)
 trySample (Condition r p) g0 =
   let (v, g1) = trySample r g0
-   in if isNothing v 
+   in if isNothing v
       then (Nothing, g1)
       else if (p (fromJust v))
            then (v, g1)

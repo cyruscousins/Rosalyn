@@ -6,9 +6,12 @@ import Rosalyn.Sequence
 import Rosalyn.Sequencing
 import Rosalyn.ListUtils
 import Rosalyn.Phylogeny
+import Rosalyn.Distance
 
 import Rosalyn.Trees
 import Rosalyn.Executor
+
+import GHC.Exts
 
 import System.Random
 
@@ -182,8 +185,8 @@ jsReadsetDistance :: Int -> ReadSet -> ReadSet -> Double
 jsReadsetDistance k a b =
   let ak = kmerizeReadSet k a
       bk = kmerizeReadSet k b
-      ar = Rosalyn.Random.fromList ak
-      br = Rosalyn.Random.fromList bk
+      ar = fromList ak
+      br = fromList bk
    in sqrt $ jsDiscrete ar br
 
 --Subramanian & Shwartz metric
@@ -216,13 +219,37 @@ readsetEvaluationExperiment =
 
 --This experiment evaluates distance matrices in a phylogenetic context.
 
+--Given: initial genome size distribution, phylogeny size distribution, number of genome mutations per descent, number of readsets to sample, and readset distance function.
+--Constructs a random phylogeny from the output, draws readsets.  Then the following processing occurs:
+--The AUROC for the readset distances is calculated, the classes being intragenomic and intergenomic distances.
+--The distance matrix defined by the tree and the distance matrix produced by the distance metric are calculated.
+--The euclidean distance between the normalized distance metrics is calculated.  This summary statistic determines how well the readset distance function matches the true distance function.
+--Result: ((true DM, readset DM), DM distance, auroc, full phylogeny tree (including genomes and reads))
+--TODO return read depth.
+--TODO return rank difference of distance matrices (sum of offsets?  or number of swaps required?).
+phylogenyDistanceExperiment :: Rand Int -> Rand Int -> Int -> (ReadSet -> ReadSet -> Double) -> Rand ((DistanceMatrix, DistanceMatrix), Double, Double, BinaryTree (Genome, [ReadSet]))
+phylogenyDistanceExperiment gLenD tSizeD sampleCount d =
+  do len <- gLenD --Length of the genome
+     hmm <- (dnaHMM 0.0 256) --Random HMM to generate the genome
+     (h, g0) <- liftM unzip (hmmRand hmm 0 len) --The genome generated from the HMM
+     tSize <- tSizeD
+     p <- randomPhylogeny g0 tSize 5 --TODO generalize this (5 mutations per speciation).
+     rsLists <- mapM (\g -> replicateM sampleCount (sequenceGenomeReadsBiased' basicSequencerSpec g)) (inOrder p)
+     let p' :: BinaryTree (Genome, [ReadSet])
+         p' = zipTreeList p rsLists
+         auc :: Double
+         auc = uncurry auroc $ evaluateReadsetDistanceMetric rsLists d
+         rsSingle :: [ReadSet]
+         rsSingle = map head rsLists
+         rsDM :: DistanceMatrix
+         rsDM = createDistanceMatrix rsSingle d
+         trueDM :: DistanceMatrix
+         trueDM = constantWeightTreeDistanceMatrix 1 p
+         dmDist = euclideanDistanceNormalizedDM trueDM rsDM
+      in return ((trueDM, rsDM), dmDist, auc, p')
 
+phylogenyDistanceExperimentJS :: Rand ((DistanceMatrix, DistanceMatrix), Double, Double, BinaryTree (Genome, [ReadSet]))
+phylogenyDistanceExperimentJS = phylogenyDistanceExperiment (UniformEnum (1000, 2000)) (UniformEnum (4, 6)) 3 (jsReadsetDistance 7)
+--phylogenyDistanceExperimentJS = phylogenyDistanceExperiment (UniformEnum (100, 200)) (UniformEnum (2, 3)) 2 (jsReadsetDistance 5)
 
-
---Given initial genome, size of tree, and mutations per construct a random phylogeny tree.
-randomPhylogeny :: Genome -> Int -> Int -> Rand (BinaryTree Genome)
-randomPhylogeny g0 tSize mCount =
-  do treeShape <- sizedRandom tSize
-     descentWithModification treeShape g0 (mutateGenomeIterated mCount)
-
-
+--TODO make an experiment that plots performance against read depth for multiple readset distances.

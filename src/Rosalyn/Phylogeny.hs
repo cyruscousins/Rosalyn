@@ -17,8 +17,8 @@ descentWithModification (Node () c0 c1) v f =
 
 --Distribution over initial genomes.
 --Distribution over phylogeny sizes.
-randomGenomePhylogeny :: Rand Genome -> Rand Int -> Rand (BinaryTree (Maybe Genome))
-randomGenomePhylogeny genomeD phylogenySizeD = 
+randomExtantPhylogeny :: Rand Genome -> Rand Int -> Rand (BinaryTree (Maybe Genome))
+randomExtantPhylogeny genomeD phylogenySizeD = 
   do phylogenySize <- phylogenySizeD
      treeStructure <- sizedRandom phylogenySize
      g0 <- genomeD
@@ -45,6 +45,7 @@ randomPhylogeny g i r0 =
 -}
 
 --Given initial genome, size of tree, and mutations per construct a random phylogeny tree.
+--TODO number of mutations should be replaced with a random mutation function.
 randomPhylogeny :: Genome -> Int -> Int -> Rand (BinaryTree Genome)
 randomPhylogeny g0 tSize mCount =
   do treeShape <- sizedRandom tSize

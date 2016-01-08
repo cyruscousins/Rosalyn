@@ -247,7 +247,7 @@ sequenceGenomeReadAdvanced g0 lenD m chmD =
 
 --Randomly select regions to sample from, then sample from said regions.  This introduces sampling bias.
 --Genome, number of regions, samples per region, size of region, size of samples, mutator, chimer frequency
-sequenceGenomeReadsBiased :: Genome -> Int -> (Rand Int) -> (Rand Int) -> (Rand Int) -> (String -> Rand String) -> (Rand Bool) -> (Rand [SRead])
+sequenceGenomeReadsBiased :: Genome -> Int -> (Rand Int) -> (Rand Int) -> (Rand Int) -> (String -> Rand String) -> (Rand Bool) -> (Rand ReadSet)
 sequenceGenomeReadsBiased _ 0 _ _ _ _ _ = Return []
 sequenceGenomeReadsBiased g0 regions regionCountD regionLenD sampleLenD mutator chmD =
   do rLen <- regionLenD
@@ -255,6 +255,25 @@ sequenceGenomeReadsBiased g0 regions regionCountD regionLenD sampleLenD mutator 
      numSamples <- regionCountD
      samples <- sequence (replicate numSamples $ sequenceGenomeReadAdvanced ((\ (a, b, c) -> b) (trisectList r0 rLen g0)) sampleLenD mutator chmD)
      (liftM ((++) samples)) (sequenceGenomeReadsBiased g0 (pred regions) regionCountD regionLenD sampleLenD mutator chmD)
+
+--The above function uses the following data.  It's heavily parameterized, so it's less confusing to use a record type.
+--TODO rather than regionSize, it would be good to have a Rand (Int, Int) for sampling regions.  This could capture more diverse biases.
+data BiasedSequencerSpec = BiasedSequencerSpec {
+  regionCount :: Int,
+  samplesPerRegion :: Rand Int,
+  regionSize :: Rand Int,
+  sampleLength :: Rand Int,
+  mutator :: String -> Rand String,
+  chimerProbability :: Prob
+  }
+
+--128 uniformly distributed regions, each between 1000 and 10000 nucleotides long, with between 1 and 10 samples taken from the region.  Reads are 50 to 500 bp long (this may be an unrealistically wide distribution, which is useful because it tests a strange edge case).  Uniform mutation probability 1/10, chimer probability (within a region) probability 1/10.
+basicSequencerSpec = BiasedSequencerSpec { regionCount = 128, regionSize = UniformEnum (1000, 10000), samplesPerRegion = UniformEnum (1, 10), sampleLength = UniformEnum (50, 500), mutator = mutateRead $ mutateP 0.1, chimerProbability = 0.1 }
+
+sequenceGenomeReadsBiased' :: BiasedSequencerSpec -> Genome -> (Rand ReadSet)
+sequenceGenomeReadsBiased' (BiasedSequencerSpec { regionCount = regionCount, samplesPerRegion = samplesPerRegion, regionSize = regionSize, mutator = mutator, chimerProbability = chimerProbability }) g = --TODO is there a more concise way to pattern match this?
+  let cp = Flip chimerProbability
+   in sequenceGenomeReadsBiased g regionCount samplesPerRegion regionSize samplesPerRegion mutator cp 
 
 --Turn a single read into a paired read by removing the middle of it and reverse complementing one side of it.
 readToPairedRead :: Rand Int -> SRead -> Rand (SRead, SRead)
