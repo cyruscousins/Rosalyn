@@ -1,5 +1,5 @@
 {-# LANGUAGE DeriveGeneric, DeriveAnyClass #-}
-{-# LANGUAGE TypeSynonymInstances, TemplateHaskell, QuasiQuotes, MultiParamTypeClasses, FlexibleInstances, DeriveDataTypeable, NamedFieldPuns, ScopedTypeVariables #-}
+{-# LANGUAGE TypeSynonymInstances, TemplateHaskell, QuasiQuotes, MultiParamTypeClasses, FlexibleInstances, DeriveDataTypeable, NamedFieldPuns, ScopedTypeVariables, InstanceSigs #-}
 
 module Rosalyn.External.Spades where
 
@@ -11,11 +11,36 @@ import Data.List
 import Data.Char
 import Data.Hashable
 
+import Control.Monad
+
 --import Language.Pads.Padsc
 
 import Rosalyn.Executor
 import Rosalyn.Random
 import Rosalyn.Sequence
+import Rosalyn.ListUtils
+
+------------------------
+--Draft Spades interface
+
+--Singleton Spades type
+data Spades = Spades
+spades = Spades
+
+instance Executable Spades [SRead] [(SRead, SRead)] where
+  binaryName :: Spades -> String
+  binaryName _ = "python"
+  subName :: Spades -> String
+  subName _ = "spades"
+  arguments :: Spades -> [SRead] -> [SRead]
+  arguments _ _ = ["origin/external_bin/SPAdes-3.6.2-Linux/bin/spades.py", "--only-assembler", "--careful", "--sc", "--s1", "reads.fa", "-o", "out/"]
+  writeInput :: Spades -> [SRead] -> IO ()
+  writeInput _ reads =
+    let outFile = "reads.fa"
+        outData = toFasta reads
+     in writeFile outFile outData
+  readOutput :: Spades -> [SRead] -> IO [(SRead, SRead)]
+  readOutput _ _ = liftM fromFasta (readFile ("out/contigs.fasta"))
 
 -------------------------
 --PADS data definitions--
@@ -149,14 +174,6 @@ Advanced options:
 toFasta :: [String] -> String
 toFasta l = concat (map (\ (i, r) -> ">seq" ++ (show i) ++ "\n" ++ r ++ "\n") (zip [0..] l))
 
-alternateTakeDrop :: Int -> Int -> [a] -> [a]
-alternateTakeDrop t d [] = []
-alternateTakeDrop t d l = (take t l) ++ (alternateTakeDrop t d (drop ((+) t d) l))
-
---TODO generic code for dealing with pairs.
-disjointAdjacentPairs :: [a] -> [(a, a)]
-disjointAdjacentPairs l = zip (alternateTakeDrop 1 1 l) (alternateTakeDrop 1 1 (drop 1 l))
-
 fromFasta :: String -> [(String, String)]
 fromFasta s =
   let l = lines s
@@ -167,24 +184,7 @@ fromFasta s =
    in (drop 1) (fHelper ("", "") l)
 --fromFasta = disjointAdjacentPairs . lines
 
---TODO could do some of the configuration with --dataset <FILENAME>, where we provide a YAML description of the input files.  This would have the benefit of being cached between runs.
-spadesArgs :: [String] -> String -> [String]
-spadesArgs args dir = ["external_bin/SPAdes-3.6.2-Linux/bin/spades.py", "--only-assembler", "--careful", "--sc", "--s1", dir ++ "reads.fa", "-o", dir ++ "out/"] --TODO spades is picky about the --continue option.  We need to check if there is anything to continue from if we want to use it.  --Note: --sc option automatically sets k to 21,33,55
 
-spadesOut :: [String] -> String -> IO ()
-spadesOut args dir =
-  let outFile = dir ++ "reads.fa"
-      outData = toFasta args
-   in writeFile outFile outData
-
-spadesIn :: [String] -> String -> IO [(String, String)]
-spadesIn _ dir = fmap fromFasta (readFile (dir ++ "out/contigs.fasta"))
-
-spades :: Rosalyn.Executor.Program [String] [(String, String)]
-spades = Rosalyn.Executor.Program "python" "spades" spadesArgs spadesOut spadesIn (const [])
-
-spadesUnsafe :: [String] -> [(String, String)]
-spadesUnsafe input = unsafePerformIO $ runProgram spades input
 
 coverageToArgs :: CoverageCutoff -> [String]
 coverageToArgs Auto = ["--cov-cutoff", "auto"]
@@ -239,6 +239,7 @@ readFileName _ i = "reads" ++ (show i) ++ ".fa"
 yamlEntry :: String -> Orientation -> SpadesReadType -> Int -> String
 yamlEntry dir o rt idx = "{ " ++ "orientation: \"" ++ (orientationString o) ++ "\", type: \"" ++ (readTypeString rt) ++ "\", " ++ (readTypeReadModeString rt) ++ ", reads: [" ++ (readFileName rt idx) ++ "]"
 
+{-
 spadesOut' :: SpadesInput -> String -> IO ()
 spadesOut' (SpadesInput cfg readsets) dir =
   let processReadset :: Int -> SpadesDataset -> IO String
@@ -263,6 +264,7 @@ spades' = Rosalyn.Executor.Program "python" "spades" spadesArgs' spadesOut' spad
 
 spadesUnsafe' :: SpadesInput -> [(String, String)]
 spadesUnsafe' input = unsafePerformIO $ runProgram spades' input
+-}
 
 --Spades installation (linux):
 {-
@@ -271,6 +273,4 @@ tar -xzf SPAdes-3.5.0-Linux.tar.gz
 cd SPAdes-3.5.0-Linux/bin/
 -}
 
-
---TODO Pads, neighbor joining (Bind to your julia implemenation, hen to phyllip..
 

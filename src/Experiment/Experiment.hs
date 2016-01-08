@@ -99,7 +99,7 @@ spadesExperiment gLenD rLenD sections readsPerSectionD sectionLenD mutator chmD 
      hmm <- (dnaHMM 0.0 256) --Random HMM to generate the genome
      (h, g) <- liftM unzip (hmmRand hmm 0 len) --The genome generated from the HMM
      r <- sequenceGenomeReadsBiased g sections readsPerSectionD sectionLenD rLenD mutator chmD
-     return (g, r, spadesUnsafe (map (\ s -> s) r))
+     return (g, r, runProgramUnsafe Spades (map (\ s -> s) r))
 
 spadesExperimentDefault :: Rand (Genome, ReadSet, [(String, String)])
 spadesExperimentDefault =
@@ -132,12 +132,12 @@ spadesExperiment2 gLenD rLenD sections readsPerSectionD sectionLenD mutator chmD
      g1 <- mutateGenomeIterated 5 g0
      r0 <- sequenceGenomeReadsBiased g0 sections readsPerSectionD sectionLenD rLenD mutator chmD
      r1 <- sequenceGenomeReadsBiased g1 sections readsPerSectionD sectionLenD rLenD mutator chmD
-     let a0 = spadesUnsafe r0
-         a1 = spadesUnsafe r1
+     let a0 = runProgramUnsafe Spades r0
+         a1 = runProgramUnsafe Spades r1
          --TODO selection should be random.
          --Selection should be a small fraction, so it could easily be random if it doesn't support existing information.  Should shoot for coverage 1?
-         a0' = spadesUnsafe (r0 ++ (take (div (length r1) 10) r1))
-         a1' = spadesUnsafe (r1 ++ (take (div (length r0) 10) r0))
+         a0' = runProgramUnsafe Spades (r0 ++ (take (div (length r1) 10) r1))
+         a1' = runProgramUnsafe Spades (r1 ++ (take (div (length r0) 10) r0))
          aToEval :: Genome -> [(String, String)] -> Int
          aToEval g l = evaluateAssemblyContigsLD g (map snd l)
       in return (((g0, length g0, readDepth g0 r0), (g1, length g1, readDepth g1 r1), levenshteinDistance defaultEditCosts g0 g1), (r0, r1), ((a0, a1), (a0', a1')), ((aToEval g0 a0, aToEval g1 a1), (aToEval g0 a0', aToEval g1 a1')))

@@ -16,6 +16,9 @@ mapT2 f (x, y) = (f x, f y)
 -------
 --Lists
 
+bookendIntercalate :: [a] -> [a] -> [a] -> [[a]] -> [a]
+bookendIntercalate s e i v = s ++ (intercalate i v) ++ e
+
 --Calculate the cartesian products of (multi)sets a and b.
 --Result is lexicographically sorted with respect to a then b.
 cartesianProduct :: [a] -> [b] -> [(a, b)]
@@ -27,6 +30,15 @@ adjacentPairs :: [a] -> [(a, a)]
 adjacentPairs [] = []
 adjacentPairs [a] = []
 adjacentPairs (a:b:l) = (a, b):(adjacentPairs (b:l))
+
+--Given integers x, y, and a list, take groups of x adjacent values, separated by y dropped values.
+alternateTakeDrop :: Int -> Int -> [a] -> [a]
+alternateTakeDrop t d [] = []
+alternateTakeDrop t d l = (take t l) ++ (alternateTakeDrop t d (drop ((+) t d) l))
+
+disjointAdjacentPairs :: [a] -> [(a, a)]
+disjointAdjacentPairs l = zip (alternateTakeDrop 1 1 l) (alternateTakeDrop 1 1 (drop 1 l))
+
 
 --Produce a list containing all unordered unique pairs.
 --Contains a maximal set of (a, b) such that (b, a) is not also included.
