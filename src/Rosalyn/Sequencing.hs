@@ -17,6 +17,7 @@ import Data.Char
 import qualified Data.Map
 import qualified Data.Maybe
 import qualified Data.Graph
+import qualified Data.Set as Set
 
 import Control.Monad hiding (mapM, sequence)
 import Data.Traversable
@@ -145,6 +146,8 @@ mutateGenome g =
   do action <- Uniform [randomDeletion, randomInversion, randomDuplication, mutateRead (mutateP (1.0 / 100.0))]
      action g
 
+--TODO is their a combinator that does this:
+--f :: (Monad m) => a -> Int -> (a -> m a) -> m a
 mutateGenomeIterated :: Int -> Genome -> Rand Genome
 mutateGenomeIterated 0 g = Return g
 mutateGenomeIterated x g =
@@ -197,22 +200,16 @@ generalizedJacardMultiset a b =
    in (%) numerator denominator
 -}
 
-kmerizeRead :: Int -> SRead -> [Kmer]
-kmerizeRead i r = map (take i) (take (succ ((-) (length r) i)) $ tails r)
-
-kmerizeReadSet :: Int -> ReadSet -> [Kmer]
-kmerizeReadSet k reads = concat $ map (kmerizeRead k) reads
-
 --TODO heavily optimizable.
-kmerizeReadSetMS :: Int -> ReadSet -> Multiset Kmer
-kmerizeReadSetMS k reads =
-  let kmers = kmerizeReadSet k reads
+kmerizeSequenceSetMS :: Int -> ReadSet -> Multiset Kmer
+kmerizeSequenceSetMS k reads =
+  let kmers = kmerizeSequenceSet k reads
    in foldr insertMultiset Data.Map.empty kmers
 
 readsetDistance :: Int -> ReadSet -> ReadSet -> Ratio Int
 readsetDistance k a b =
-  let rs0 = kmerizeReadSetMS k a
-      rs1 = kmerizeReadSetMS k b
+  let rs0 = kmerizeSequenceSetMS k a
+      rs1 = kmerizeSequenceSetMS k b
    in generalizedJacardMultiset rs0 rs1
 
 --TODO use distance matrix module for this.
@@ -232,7 +229,7 @@ kmersetDistanceMatrix items =
    in f
 
 readSetDistanceMatrix :: Int -> [ReadSet] -> (Int -> Int -> Ratio Int)
-readSetDistanceMatrix i r = kmersetDistanceMatrix $ map (kmerizeReadSetMS i) r
+readSetDistanceMatrix i r = kmersetDistanceMatrix $ map (kmerizeSequenceSetMS i) r
 
 --Sequence with reverse complementing, mutations, and chimers.
 sequenceGenomeReadAdvanced :: Genome -> (Rand Int) -> (String -> Rand String) -> (Rand Bool) -> (Rand SRead)
@@ -307,4 +304,50 @@ dnaHMM stayProb hiddenStates =
   do transitions <- sequence (replicate hiddenStates $ randomDistribution [0..(pred hiddenStates)])
      emissions <- sequence (replicate hiddenStates $ randomDistribution nucleotides)
      return $ HiddenMarkovModel (MarkovModel (\s -> Bind (Flip stayProb) (\x -> if x then Return s else (!!) transitions s))) ((!!) emissions)
+
+
+--Assembly statistics:
+
+--TODO: Does laziness benefit here?
+jacardSimilarity :: (Ord a) => Set.Set a -> Set.Set a -> Ratio Int
+jacardSimilarity a b = (%) (Set.size (Set.intersection a b)) (Set.size (Set.union a b))
+
+jacardDistance :: (Ord a) => Set.Set a -> Set.Set a -> Ratio Int
+jacardDistance a b = 1 - (jacardSimilarity a b)
+
+jacardKmerAssemblyCoverage :: Int -> Genome -> ReadSet -> Ratio Int
+jacardKmerAssemblyCoverage i a b = jacardDistance (Set.fromList $ kmerizeSequence i a) (Set.fromList $ kmerizeSequenceSet i b)
+
+jacardSubkmerAssemblyCoverage :: Int -> Genome -> ReadSet -> Ratio Int
+jacardSubkmerAssemblyCoverage i a b = jacardDistance (Set.fromList $ subkmerizeSequence i a) (Set.fromList $ subkmerizeSequenceSet i b)
+
+
+
+nxStatistic :: Ratio Int -> [Int] -> Ratio Int
+nxStatistic x l =
+  let total = sum l
+      partials = map (\ x -> (sum x, last x)) ((tail . inits) l) --TODO replace this with a fold or partial collecting fold.
+      nx' :: [(Int, Int)] -> Ratio Int
+      nx' [(s, v)] = v % 1 --If we get to the last item, it's the N50.
+      nx' ((s, v):(s', v'):r)
+       | (s % total) == x = (v + v') % 2--If exactly x weight comes before, then we take the average of this value and the next.
+       | (s % total) > x = v % 1
+       | otherwise = nx' ((s', v'):r)
+   in nx' partials
+{-
+  let counts = countAdj l
+      weightedSizes = map ( \ (s, c) -> (s, s * c)) counts
+      total = sum (map snd weightedSizes)
+      partials = map (\ l -> (sum (map snd l), last (map fst l))) (heads total)
+      n50' [(s, c)] = s --Last item is N50 (special case, because it can't possibly be the average of 2).
+-}
+
+n50Statistic :: [Int] -> Ratio Int
+n50Statistic = nxStatistic (1 % 2)
+
+nxStatisticLength :: Ratio Int -> [[a]] -> Ratio Int
+nxStatisticLength r = (nxStatistic r) . (map length)
+
+n50StatisticLength :: [[a]] -> Ratio Int
+n50StatisticLength = n50Statistic . (map length)
 

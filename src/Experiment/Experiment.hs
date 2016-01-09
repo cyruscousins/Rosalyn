@@ -39,7 +39,7 @@ evaluateAssembly (k, readkmers, numKmers) lenD g =
   let lenG = length g
       plen = toRational $ prob lenD lenG
       assemblyKmers :: Multiset Kmer
-      assemblyKmers = kmerizeReadSetMS k [g]
+      assemblyKmers = kmerizeSequenceSetMS k [g]
       numAssemblyKmers = (-) lenG (pred k)
       --Square error of differences between observed and expected frequencies, weighted by observed frequency.  Uses a prior that is not actually a distribution (pseudocount 1 with no denominator normalization).
       err :: Kmer -> Int -> Rational
@@ -74,7 +74,7 @@ assemblePB' kmers count countPer lenD =
      
 assemblePB :: Int -> Int -> Rand Int -> ReadSet -> Rand Genome
 assemblePB k count len reads =
-  let kmers = kmerizeReadSetMS k reads
+  let kmers = kmerizeSequenceSetMS k reads
       totalKmers = sizeMultiset kmers
    in assemblePB' (k, kmers, totalKmers) count count len
 
@@ -123,36 +123,67 @@ runSpadesExperimentDefault =
 --TODO parameter for mixing degree.
 --This second experiment generates a genome and a 
 --Takes genome length distribution, read length distribution, section count, read per section distribution, section length distribution, read mutation function, and chimer frequency.
-spadesExperiment2 :: Rand Int -> Rand Int -> Int -> Rand Int -> Rand Int -> (String -> Rand String) -> Rand Bool -> Rand (((Genome, Int, Ratio Int), (Genome, Int, Ratio Int), Int), (ReadSet, ReadSet), (([(String, String)], [(String, String)]), ([(String, String)], [(String, String)])), ((Int, Int), (Int, Int)))
-spadesExperiment2 gLenD rLenD sections readsPerSectionD sectionLenD mutator chmD =
+type AsmEval = (Ratio Int, Ratio Int)
+spadesExperiment2 :: Rand Int -> (Genome -> Rand Genome) -> Rand Int -> Int -> Rand Int -> Rand Int -> (String -> Rand String) -> Rand Bool -> Ratio Int -> Rand (((Genome, Int, Ratio Int), (Genome, Int, Ratio Int), Int), (ReadSet, ReadSet), (([(String, String)], [(String, String)]), ([(String, String)], [(String, String)])), ((AsmEval, AsmEval), (AsmEval, AsmEval)))
+spadesExperiment2 gLenD mutator rLenD sections readsPerSectionD sectionLenD sequenceError chmD mixRatio =
   do --g <- randomGenome (gLenD)
      len <- gLenD --Length of the genome
      hmm <- (dnaHMM 0.0 256) --Random HMM to generate the genome
      (h, g0) <- liftM unzip (hmmRand hmm 0 len) --The genome generated from the HMM
-     g1 <- mutateGenomeIterated 5 g0
-     r0 <- sequenceGenomeReadsBiased g0 sections readsPerSectionD sectionLenD rLenD mutator chmD
-     r1 <- sequenceGenomeReadsBiased g1 sections readsPerSectionD sectionLenD rLenD mutator chmD
+     g1 <- mutator g0
+     r0 <- sequenceGenomeReadsBiased g0 sections readsPerSectionD sectionLenD rLenD sequenceError chmD
+     r1 <- sequenceGenomeReadsBiased g1 sections readsPerSectionD sectionLenD rLenD sequenceError chmD
+     r0' <- liftM ((++) r0) (randomSublistRatio mixRatio r1) --TODO parameterize this ratio.
+     r1' <- liftM ((++) r0) (randomSublistRatio mixRatio r0)
      let a0 = runProgramUnsafe Spades r0
          a1 = runProgramUnsafe Spades r1
          --TODO selection should be random.
          --Selection should be a small fraction, so it could easily be random if it doesn't support existing information.  Should shoot for coverage 1?
-         a0' = runProgramUnsafe Spades (r0 ++ (take (div (length r1) 10) r1))
-         a1' = runProgramUnsafe Spades (r1 ++ (take (div (length r0) 10) r0))
-         aToEval :: Genome -> [(String, String)] -> Int
-         aToEval g l = evaluateAssemblyContigsLD g (map snd l)
+         a0' = runProgramUnsafe Spades r0'
+         a1' = runProgramUnsafe Spades r1'
+         --aToEval :: Genome -> [(String, String)] -> Int
+         --aToEval g l = evaluateAssemblyContigsLD g (map snd l)
+         --aToEval :: Genome -> [(String, String)] -> Ratio Int
+         --aToEval g l = jacardKmerAssemblyCoverage 100 g (map snd l)
+         aToEval :: Genome -> [(String, String)] -> (Ratio Int, Ratio Int)
+         aToEval g l = (jacardSubkmerAssemblyCoverage 100 g (map snd l), n50StatisticLength (map snd l))
       in return (((g0, length g0, readDepth g0 r0), (g1, length g1, readDepth g1 r1), levenshteinDistance defaultEditCosts g0 g1), (r0, r1), ((a0, a1), (a0', a1')), ((aToEval g0 a0, aToEval g1 a1), (aToEval g0 a0', aToEval g1 a1')))
 
---TODO this experiment didn't go so well.  It might be better if we gave spades the original dataset as contigs.
-spadesExperiment2Default =
-  --Spades is pretty picky, and doesn't like small data sets.
+--Some parameterizations of the assembly experiment:
+--Spades is pretty picky, and doesn't like small data sets. Genome sizes much smaller than this are not recommended.
+spadesExperiment2Easy =
   let gLenD = UniformEnum (2000, 3000)
-      rLenD = UniformEnum (75, 100)
-      sections = 64
+      smallBigRatio a b
+       | a < b = a % b
+       | otherwise = b % a
+      mutator g = Condition (mutateGenomeIterated 5 g) (\ g' -> (smallBigRatio (length g) (length g')) > 1 % 2)
+      rLenD = UniformEnum (50, 125)
+      sections = 128
+      rCountD = UniformEnum (2, 10)
+      regionLenD = UniformEnum (200, 3000)
+      sequenceError = mutateRead $ mutateP 0.05 -- 1 / 20 probability of uniform mutation
+      chmD = Flip 0.05 -- 1 / 20 probability of chimerization.
+      mixRatio = 1 % 10
+   in spadesExperiment2 gLenD mutator rLenD sections rCountD regionLenD sequenceError chmD mixRatio
+
+--In this experiment, the genomes being assembled are longer and more distant, the reads are shorter, there are slightly fewer reads (these factors all result in much lower coverage), and bias is more signficant.
+spadesExperiment2Hard =
+  let gLenD = UniformEnum (3000, 6000)
+      smallBigRatio a b
+       | a < b = a % b
+       | otherwise = b % a
+      mutator g = Condition (mutateGenomeIterated 8 g) (\ g' -> (smallBigRatio (length g) (length g')) > 1 % 2)
+      rLenD = UniformEnum (50, 75)
+      sections = 128
       rCountD = UniformEnum (1, 10)
-      regionLenD = UniformEnum (200, 2000)
-      mutator = mutateRead $ mutateP 0.1 -- 1 / 10 probability of uniform mutation
+      regionLenD = UniformEnum (100, 2000)
+      sequenceError = mutateRead $ mutateP 0.1 -- 1 / 10 probability of uniform mutation
       chmD = Flip 0.1 -- 1 / 10 probability of chimerization.
-   in spadesExperiment2 gLenD rLenD sections rCountD regionLenD mutator chmD
+      mixRatio = 1 % 10
+   in spadesExperiment2 gLenD mutator rLenD sections rCountD regionLenD sequenceError chmD mixRatio
+
+--We expect Spades to be capable of assembling the genomes without requiring the mixed in reads in the Easy experiment.  The addition of these reads may help assembly, but they may only serve to add confusion.
+--We expect Spades to assemble the genomes very poorly in the Hard experiment, but we expect substantially improved performance with the addition of mixed reads.
 
 --Given 2 readsets and an evaluation function, split the readsets and determine the intra and inter readset distances (respectively).
 evaluateReadsetDistanceMetricSubset :: ReadSet -> ReadSet -> (ReadSet -> ReadSet -> Prob) -> Rand ([Prob], [Prob])
@@ -170,7 +201,7 @@ evaluateReadsetDistanceMetric r d =
 --symmetric KL (with pseudocount 1) divergence
 klReadsetDistance :: Int -> ReadSet -> ReadSet -> Double
 klReadsetDistance k a b =
-  let (ak, bk) = mapT2 (kmerizeReadSet k) (a, b) --List of kmers
+  let (ak, bk) = mapT2 (kmerizeSequenceSet k) (a, b) --List of kmers
       (aks, bks) = mapT2 lexicographicSort (ak, bk) --Sorted lists of kmers.
       al = allListsSorted k nucleotides --All possible kmers (in sorted order).
       (aks', bks') = mapT2 (merge al) (aks, bks) --Sorted lists of kmers with pseudocount 1.
@@ -183,8 +214,8 @@ klReadsetDistance k a b =
 --Jensen-Shannon distance
 jsReadsetDistance :: Int -> ReadSet -> ReadSet -> Double
 jsReadsetDistance k a b =
-  let ak = kmerizeReadSet k a
-      bk = kmerizeReadSet k b
+  let ak = kmerizeSequenceSet k a
+      bk = kmerizeSequenceSet k b
       ar = fromList ak
       br = fromList bk
    in sqrt $ jsDiscrete ar br

@@ -1,8 +1,15 @@
+{-# Language MultiParamTypeClasses #-}
 module Rosalyn.ListUtils where
 
-import Data.List
+import Prelude hiding (length, head, last, null, tail, map, filter, concat, any, lookup, init, all, foldl, foldr, foldl1, foldr1, maximum, minimum, iterate, span, break, takeWhile, dropWhile, reverse, zip, zipWith, sequence, sequence_, mapM, mapM_, concatMap, and, or, sum, product, repeat, replicate, cycle, take, drop, splitAt, elem, notElem, unzip, lines, words, unlines, unwords)
 
---This module contains utility functions for lists, tuples, and other common constructs.
+import qualified Prelude as P
+
+import Data.List (intercalate)
+
+import Data.ListLike
+
+--This module contains utility functions for lists, tuples, and other common constructs.  List functions are defined to work on generic ListLike instances.
 --Ideally, all of these can be replaced with existing libraries.
 
 --------
@@ -16,7 +23,12 @@ mapT2 f (x, y) = (f x, f y)
 -------
 --Lists
 
-bookendIntercalate :: [a] -> [a] -> [a] -> [[a]] -> [a]
+--TODO intercalate should really be part of the ListLike package.  Try to add it there.
+--intercalate :: (ListLike l a, ListLike ll l, Monoid l) => l -> ll -> l
+--intercalate = concat . intersperse
+
+--bookendIntercalate :: (ListLike l a, ListLike ll l) => l -> l -> l -> ll -> l
+bookendIntercalate :: [l] -> [l] -> [l] -> [[l]] -> [l]
 bookendIntercalate s e i v = s ++ (intercalate i v) ++ e
 
 --Calculate the cartesian products of (multi)sets a and b.
@@ -58,7 +70,7 @@ intraInterUnorderedPairs :: [[a]] -> ([(a, a)], [(a, a)])
 intraInterUnorderedPairs [] = ([], [])
 intraInterUnorderedPairs (a:l) =
   let intra = allPairsUnordered a
-      inter = concat (map (cartesianProduct a) l)
+      inter = P.concat (P.map (cartesianProduct a) l)
       (intra', inter') = intraInterUnorderedPairs l
    in (intra ++ intra', inter ++ inter')
 
@@ -92,9 +104,11 @@ merge a@(ai:al) b@(bi:bl)
 --Returns a list of all lists of the given length consisting of the given elements.
 --This function may be thought of as a Cartesian exponent.
 --If the input is list is sorted, the output is lexicographically sorted.
+--allLists :: (ListLike l a, ListLike ll l) => Int -> l -> ll
+--allLists :: (ListLike l a) => Int -> l -> [l]
 allLists :: Int -> [a] -> [[a]]
-allLists 0 _ = [[]]
-allLists l v = v >>= (\x -> map ((:) x) (allLists (pred l) v))
+allLists 0 _ = empty
+allLists l v = v >>= (\x -> map (cons x) (allLists (pred l) v))
 
 allListsSorted :: (Ord a) => Int -> [a] -> [[a]]
 allListsSorted i vals = allLists i (sort vals)
@@ -102,7 +116,8 @@ allListsSorted i vals = allLists i (sort vals)
 --TODO use TemplateHaskell for these.
 allTriples :: [a] -> [(a, a, a)]
 allTriples a =
-  let lists = allLists 3 a
+  let --lists :: [[a]]
+      lists = allLists 3 a
       listToTriple (a:b:c:[]) = (a, b, c)
    in map listToTriple lists
 
@@ -111,4 +126,21 @@ allQuadrouples a =
   let lists = allLists 4 a
       listToQuad (a:b:c:d:[]) = (a, b, c, d)
    in map listToQuad lists
+
+
+--Kmerization
+kmerizeSequence :: Int -> [a] -> [[a]]
+--kmerizeSequence :: (ListLike l a, ListLike a b) => Int -> l -> l
+kmerizeSequence k r = map (P.take k) (P.take (succ ((-) (P.length r) k)) $ tails r)
+
+kmerizeSequenceSet :: Int -> [[a]] -> [[a]]
+kmerizeSequenceSet k reads = P.concat $ P.map (kmerizeSequence k) reads
+
+--Subkmerization (subkmers of length k are kmers of length <= k).
+subkmerizeSequence :: Int -> [a] -> [[a]]
+--kmerizeSequence :: (ListLike l a, ListLike a b) => Int -> l -> l
+subkmerizeSequence k r = P.concat $ P.map (tails . (P.take k)) (P.take (succ ((-) (P.length r) k)) $ tails r)
+
+subkmerizeSequenceSet :: Int -> [[a]] -> [[a]]
+subkmerizeSequenceSet k reads = P.concat $ P.map (subkmerizeSequence k) reads
 

@@ -15,13 +15,13 @@ main =
   let (g1:g2:g3:g4:g5:g6:_) = splitInfinity gen0
       (hmm, _) = sample (dnaHMM 0.0 512) gen0 --TODO Can we use a Monad Transformer to use the Random monad from within the IO Monad?
       (genome, _) = sample (liftM unzip (hmmRand hmm 0 4096)) g1
-      (spadesAsm, _) = sample spadesExperiment2Default g5
+      (spadesAsm, _) = sample spadesExperiment2Easy g5
       (phylogeny, _) = sample (randomExtantPhylogeny (Return (snd genome)) (UniformEnum (4, 16))) g2
       (rspe, _) = sample readsetEvaluationExperiment g3
       (rdme, _) = sample (phylogenyDistanceExperimentJS) g4
    in do putStrLn "Synthetic Genome:"
          putStrLn $ show genome
-         putStrLn "Spades Assembly:"
+         putStrLn "Spades Assembly Experiment:"
          putStrLn $ show spadesAsm
          putStrLn "Random Phylogeny:"
          putStrLn $ show $ phylogeny

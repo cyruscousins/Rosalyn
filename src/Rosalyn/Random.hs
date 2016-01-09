@@ -5,6 +5,7 @@ module Rosalyn.Random where
 import Rosalyn.ListUtils
 
 import Data.List
+import Data.Ratio
 import Data.Maybe
 import Data.Array.Unboxed
 import qualified Data.Map.Strict as Data.Map
@@ -159,7 +160,7 @@ fromSortedList a =
 
 instance (Ord a) => IsList (Rand a) where
   type Item (Rand a) = a
-  --fromList :: (Ord a) => [a] -> Rand a
+  fromList :: (Ord a) => [a] -> Rand a
   fromList = fromSortedList . sort
   toList r = map fst (sampleStream r gen0)
 
@@ -591,6 +592,20 @@ randomSplit a =
      splitIdx <- UniformEnum (0, (pred (length a))) ;
      return (splitAt splitIdx shuffled) ;
 
+randomSublist :: Int -> [a] -> Rand [a]
+randomSublist i l =
+  do shuffled <- shuffleList l
+     return (take i l)
+
+randomSublistRatio :: Ratio Int -> [a] -> Rand [a]
+randomSublistRatio r l =
+  let c = length l
+      c' = r * (c % 1)
+      l0 :: Int
+      l0 = floor c'
+      l1 = succ l0
+      p0 = realToFrac (1 - (c' - (l0 % 1)))
+   in (Flip p0) >>= (\t -> randomSublist (if t then l0 else l1) l)
 
 --Probability distribution statistics and comparisons.
 entropy :: Rand a -> Prob

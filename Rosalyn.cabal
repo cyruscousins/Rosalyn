@@ -26,8 +26,8 @@ library
     hashable, directory, process, unix,
     random,
     containers, array, bytestring, ListLike,
-    biocore, bioalign,
-    edit-distance
+    biocore,
+    bioalign, edit-distance
     --bed-and-breakfast
     --hmm
     --QuickCheck--, QuickSpec

@@ -4,6 +4,7 @@ module Rosalyn.Executor where
 --Logic imports
 import Data.Hashable
 import Data.List
+import Data.Word
 import Numeric (showHex)
 
 import Rosalyn.ListUtils
@@ -45,7 +46,10 @@ class (Eq a, Hashable a) => Executable p a b | p -> a b where
   programDirectory :: p -> String --StringConstant a
   programDirectory p = (intercalate "/" [memoizationRoot, binaryName p, subName p]) ++ "/"
   executionSubdirectory :: p -> a -> String -- TODO needs p?
-  executionSubdirectory p a = (showHex (hash a) "") --TODO show hex string instead of decimal string.
+  executionSubdirectory p a = 
+    let hash32 :: Word32
+        hash32 = fromIntegral $ hash a 
+     in (showHex hash32 "") --TODO show hex string instead of decimal string.
   --TODO use default to access hash, remove typeclass constraint.
   fullDirectory :: p -> a -> String
   fullDirectory p a = (programDirectory p) ++ (executionSubdirectory p a) ++ "/"
