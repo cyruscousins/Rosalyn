@@ -5,13 +5,17 @@ import GHC.Exts
 
 import Rosalyn.Sequence
 import Rosalyn.Random
+import Rosalyn.Statistics
 import Rosalyn.Trees
 import Rosalyn.Executor
 import Rosalyn.ListUtils
 
 import System.Random
 
-import Data.List
+--import Prelude hiding (length, head, last, null, tail, map, filter, concat, any, lookup, init, all, foldl, foldr, foldl1, foldr1, maximum, minimum, iterate, span, break, takeWhile, dropWhile, reverse, zip, zipWith, sequence, sequence_, mapM, mapM_, concatMap, and, or, sum, product, repeat, replicate, cycle, take, drop, splitAt, elem, notElem, unzip, lines, words, unlines, unwords)
+--import Data.ListLike --hiding (sequence, mapM)
+
+import Data.List (intercalate)
 import Data.Ratio
 import Data.Char
 import qualified Data.Map
@@ -20,7 +24,7 @@ import qualified Data.Graph
 import qualified Data.Set as Set
 
 import Control.Monad hiding (mapM, sequence)
-import Data.Traversable
+import Data.Traversable -- hiding (sequence, mapM)
 
 import Text.EditDistance
 
@@ -89,13 +93,6 @@ sequenceGenome g l c g0 =
       ss' = if f then reverse ss else ss
    in (:) ss' (sequenceGenome g l (pred c) g2)
 
---Trisect a list into ([0, p), [p, p + c), [p + c, length)) 
-trisectList :: Int -> Int -> [a] -> ([a], [a], [a]) 
-trisectList p c l0 =
-  let (s0, l1) = splitAt p l0
-      (s1, s2) = splitAt c l1
-   in (s0, s1, s2)
-
 --Types of sequence transformation
 inversion :: Genome -> (Int, Int) -> Genome
 inversion s (i, c) =
@@ -107,29 +104,36 @@ randomInversion g =
      c <- Uniform [0..((-) (pred (length g)) i)]
      return (inversion g (i, c))
 
+--Given true length and a distribution over subinterval lengths, produce a random subinterval (in (start, length) format).
+uniformSubinterval :: Int -> Rand Int -> Rand (Int, Int)
+uniformSubinterval iLen siLenD =
+  do x <- Condition siLenD ((>=) iLen)
+     s <- UniformEnum (0, iLen - x)
+     Return (s, x)
 
 deletion :: Genome -> (Int, Int) -> Genome
 deletion s (i, c) = 
   let (s0, _, s2) = trisectList i c s
    in s0 ++ s2
+randomDeletionSized :: Rand Int -> Genome -> Rand Genome
+randomDeletionSized s g =
+  do interval <- uniformSubinterval (length g) s
+     return (deletion g interval)
 randomDeletion :: Genome -> Rand Genome
-randomDeletion g =
-  do i <- Uniform [0..(pred (length g))]
-     c <- Uniform [0..((-) (pred (length g)) i)]
-     return (deletion g (i, c))
-
+randomDeletion g = randomDeletionSized (UniformEnum (1, length g)) g
 
 duplication :: Genome -> (Int, Int, Int) -> Genome
 duplication s (i0, c, i1) =
   let (_, s1, _) = trisectList i0 c s
       (s0, s2) = splitAt i1 s
    in s0 ++ s1 ++ s2
+randomDuplicationSized :: Rand Int -> Genome -> Rand Genome
+randomDuplicationSized s g =
+  do (s0, sLen) <- uniformSubinterval (length g) s
+     d0 <- UniformEnum (0, length g)
+     return $ duplication g (s0, sLen, d0)
 randomDuplication :: Genome -> Rand Genome
-randomDuplication g =
-  do i0 <- Uniform [0..(pred (length g))]
-     c  <- Uniform [0..((-) (pred (length g)) i0)]
-     i1 <- Uniform [0..(pred (length g))]
-     return (duplication g (i0, c, i1))
+randomDuplication g = randomDuplicationSized (UniformEnum (1, length g)) g
 
 {-
 mutation (i0, m) =
@@ -146,13 +150,15 @@ mutateGenome g =
   do action <- Uniform [randomDeletion, randomInversion, randomDuplication, mutateRead (mutateP (1.0 / 100.0))]
      action g
 
---TODO is their a combinator that does this:
---f :: (Monad m) => a -> Int -> (a -> m a) -> m a
+--TODO is there a library combinator that does this?
+iterateM :: (Monad m) => (a -> m a) -> Int -> a -> m a
+iterateM f 0 a = return a
+iterateM f i a = 
+  do a' <- f a
+     iterateM f (pred i) (a')
+ 
 mutateGenomeIterated :: Int -> Genome -> Rand Genome
-mutateGenomeIterated 0 g = Return g
-mutateGenomeIterated x g =
-  do g2 <- mutateGenomeIterated (pred x) g
-     mutateGenome g2
+mutateGenomeIterated i g = iterateM mutateGenome i g
 
 assemble :: Genome -> Int -> Int -> StdGen -> ReadSet
 assemble = undefined
@@ -320,34 +326,4 @@ jacardKmerAssemblyCoverage i a b = jacardDistance (Set.fromList $ kmerizeSequenc
 
 jacardSubkmerAssemblyCoverage :: Int -> Genome -> ReadSet -> Ratio Int
 jacardSubkmerAssemblyCoverage i a b = jacardDistance (Set.fromList $ subkmerizeSequence i a) (Set.fromList $ subkmerizeSequenceSet i b)
-
-
-
-nxStatistic :: Ratio Int -> [Int] -> Ratio Int
-nxStatistic x l =
-  let total = sum l
-      partials = map (\ x -> (sum x, last x)) ((tail . inits) l) --TODO replace this with a fold or partial collecting fold.
-      nx' :: [(Int, Int)] -> Ratio Int
-      nx' [(s, v)] = v % 1 --If we get to the last item, it's the N50.
-      nx' ((s, v):(s', v'):r)
-       | (s % total) == x = (v + v') % 2--If exactly x weight comes before, then we take the average of this value and the next.
-       | (s % total) > x = v % 1
-       | otherwise = nx' ((s', v'):r)
-   in nx' partials
-{-
-  let counts = countAdj l
-      weightedSizes = map ( \ (s, c) -> (s, s * c)) counts
-      total = sum (map snd weightedSizes)
-      partials = map (\ l -> (sum (map snd l), last (map fst l))) (heads total)
-      n50' [(s, c)] = s --Last item is N50 (special case, because it can't possibly be the average of 2).
--}
-
-n50Statistic :: [Int] -> Ratio Int
-n50Statistic = nxStatistic (1 % 2)
-
-nxStatisticLength :: Ratio Int -> [[a]] -> Ratio Int
-nxStatisticLength r = (nxStatistic r) . (map length)
-
-n50StatisticLength :: [[a]] -> Ratio Int
-n50StatisticLength = n50Statistic . (map length)
 

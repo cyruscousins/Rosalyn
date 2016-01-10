@@ -14,8 +14,8 @@ import Data.String
 import Data.Word
 import Data.Int
 
-import Prelude hiding (map, length, replicate, reverse)
---import Prelude hiding (length, head, last, null, tail, map, filter, concat, any, lookup, init, all, foldl, foldr, foldl1, foldr1, maximum, minimum, iterate, span, break, takeWhile, dropWhile, reverse, zip, zipWith, sequence, sequence_, mapM, mapM_, concatMap, and, or, sum, product, repeat, replicate, cycle, take, drop, splitAt, elem, notElem, unzip, lines, words, unlines, unwords)
+--import Prelude hiding (map, length, replicate, reverse)
+import Prelude hiding (length, head, last, null, tail, map, filter, concat, any, lookup, init, all, foldl, foldr, foldl1, foldr1, maximum, minimum, iterate, span, break, takeWhile, dropWhile, reverse, zip, zipWith, sequence, sequence_, mapM, mapM_, concatMap, and, or, sum, product, repeat, replicate, cycle, take, drop, splitAt, elem, notElem, unzip, lines, words, unlines, unwords)
 import Data.ListLike
 
 --import qualified Data.ByteString
@@ -49,12 +49,20 @@ instance IsList Sequence where
 --instance (IsList a) => ListLike a where
 --instance ListLike Sequence Word8 where
 
---TODO: These are nice, but they don't actually do anything.
---Need to use Data.ByteString implementations.
-instance FoldableLL Sequence Word8
-instance ListLike Sequence Word8
+--TODO: This minimal complete definition is extremely inefficient, error prone, and unnecessary.
+--Need to use the Data.ByteString implementation directly.
+instance FoldableLL Sequence Word8 where
+  foldl f z (SeqData bs) = foldl f z bs
+  foldr f z (SeqData bs) = foldr f z bs
+instance ListLike Sequence Word8 where
+  singleton = SeqData . singleton
+  head (SeqData bs) = head bs
+  tail (SeqData bs) = SeqData $ tail bs
+  take c (SeqData bs) = SeqData (take c bs)
+  drop c (SeqData bs) = SeqData (drop c bs)
+  --map f (SeqData bs) = SeqData (map f bs)
 instance ListLikeIO Sequence Word8
-instance StringLike Sequence Word8 --Redundant with IsString.
+instance StringLike Sequence --Almost redundant with IsString.
 
 --TODO there is a GHC bug, should be reported:
 {-
@@ -91,11 +99,21 @@ packSequence l = SeqData $ Data.ByteString.Lazy.pack (map (fromIntegral . ord) l
 --instance Traversable Sequence where
 --  traverse 
 
---Used mostly for mapping: ideally this construct should not be used as it is inherently inefficient.
-emptySequence :: Int -> Sequence
-emptySequence i = GHC.Exts.fromList (replicate i '\0')
+
+--TODO this is a mess: nucleotide related operations should be abstracted better.
+
+complementW8 :: Word8 -> Word8
+complementW8 w = (fromIntegral . ord) (complement $ (chr . fromIntegral) w)
+
+reverseComplement :: Sequence -> Sequence
+reverseComplement = (map complementW8) . reverse
+
 #else
 type Sequence = [Nucleotide]
+
+reverseComplement :: Sequence -> Sequence
+reverseComplement = (map complement) . reverse
+
 #endif
 
 type Genome = Sequence
@@ -111,10 +129,6 @@ complement 'A' = 'T'
 complement 'T' = 'A'
 complement 'G' = 'C'
 complement 'C' = 'G'
-
---TODO want a generic version that works for bytestrings.
-reverseComplement :: [Char] -> [Char]
-reverseComplement = (map complement) . reverse
 
 --nucleotides :: --(IsList l) => l
 nucleotides = ['A', 'T', 'C', 'G']

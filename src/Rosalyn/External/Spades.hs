@@ -1,13 +1,16 @@
-{-# LANGUAGE DeriveGeneric, DeriveAnyClass #-}
+{-# LANGUAGE DeriveGeneric, DeriveAnyClass, OverloadedStrings #-}
 {-# LANGUAGE TypeSynonymInstances, TemplateHaskell, QuasiQuotes, MultiParamTypeClasses, FlexibleInstances, DeriveDataTypeable, NamedFieldPuns, ScopedTypeVariables, InstanceSigs #-}
 
 module Rosalyn.External.Spades where
 
+import GHC.Exts (IsString)
 import GHC.Generics (Generic)
 
 import System.IO.Unsafe
 
-import Data.List
+import Prelude hiding (length, head, last, null, tail, map, filter, concat, any, lookup, init, all, foldl, foldr, foldl1, foldr1, maximum, minimum, iterate, span, break, takeWhile, dropWhile, reverse, zip, zipWith, sequence, sequence_, mapM, mapM_, concatMap, and, or, sum, product, repeat, replicate, cycle, take, drop, splitAt, elem, notElem, unzip, lines, words, unlines, unwords)
+import Data.List (intercalate)
+import Data.ListLike hiding (writeFile, readFile)
 import Data.Char
 import Data.Hashable
 
@@ -27,19 +30,19 @@ import Rosalyn.ListUtils
 data Spades = Spades
 spades = Spades
 
-instance Executable Spades [SRead] [(SRead, SRead)] where
+instance Executable Spades [SRead] [(String, SRead)] where
   binaryName :: Spades -> String
   binaryName _ = "python"
   subName :: Spades -> String
   subName _ = "spades"
-  arguments :: Spades -> [SRead] -> [SRead]
+  arguments :: Spades -> [SRead] -> [String]
   arguments _ _ = ["origin/external_bin/SPAdes-3.6.2-Linux/bin/spades.py", "--only-assembler", "--careful", "--sc", "--s1", "reads.fa", "-o", "out/"]
   writeInput :: Spades -> [SRead] -> IO ()
   writeInput _ reads =
     let outFile = "reads.fa"
         outData = toFasta reads
      in writeFile outFile outData
-  readOutput :: Spades -> [SRead] -> IO [(SRead, SRead)]
+  readOutput :: Spades -> [SRead] -> IO [(String, SRead)]
   readOutput _ _ = liftM fromFasta (readFile ("out/contigs.fasta"))
 
 -------------------------
@@ -171,17 +174,26 @@ Advanced options:
 
 --TODO use pads for this stuff!
 --TODO biohaskell compatibility.
-toFasta :: [String] -> String
-toFasta l = concat (map (\ (i, r) -> ">seq" ++ (show i) ++ "\n" ++ r ++ "\n") (zip [0..] l))
+toFasta :: [Sequence] -> String
+toFasta l =
+  let indexed :: [(Int, Sequence)]
+      indexed = indexList l
+      entries :: [String]
+      entries = map (\ (i, r) -> ">seq" ++ (show i) ++ "\n" ++ (toString r) ++ "\n") indexed
+      result :: String
+      result = concat entries
+   in result
 
-fromFasta :: String -> [(String, String)]
+fromFasta :: String -> [(String, Sequence)]
 fromFasta s =
   let l = lines s
       fHelper curLine [] = [curLine] --Out of lines
       fHelper (label, seq) (curLine:rest)
-       | (head curLine) == '>' = (label, seq):(fHelper (curLine, []) rest)
+       | (head curLine) == '>' = (label, fromList seq):(fHelper (curLine, []) rest)
        | otherwise = fHelper (label, seq ++ (curLine)) rest
-   in (drop 1) (fHelper ("", "") l)
+      stringResult :: [(String, String)]
+      stringResult = (drop 1) (fHelper ("", "") l)
+   in map (\ (l, s) -> (l, fromString s)) stringResult
 --fromFasta = disjointAdjacentPairs . lines
 
 

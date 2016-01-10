@@ -2,6 +2,7 @@ module Experiment.Experiment where
 
 import Rosalyn.External.Spades
 import Rosalyn.Random
+import Rosalyn.Statistics
 import Rosalyn.Sequence
 import Rosalyn.Sequencing
 import Rosalyn.ListUtils

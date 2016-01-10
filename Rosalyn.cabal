@@ -18,7 +18,7 @@ library
   exposed-modules:     Lib,
                        Rosalyn.Executor,
                        Rosalyn.Sequence, Rosalyn.Sequencing, Rosalyn.Trees, Rosalyn.Distance, Rosalyn.Phylogeny,
-                       Rosalyn.Random,
+                       Rosalyn.Random, Rosalyn.Statistics,
                        Rosalyn.ListUtils,
                        Rosalyn.External.Spades,
                        Experiment.Experiment
