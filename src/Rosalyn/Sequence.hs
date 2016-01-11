@@ -73,6 +73,9 @@ instance ListLike Sequence Word8 where
 instance ListLikeIO Sequence Word8
 instance StringLike Sequence --Almost redundant with IsString.
 
+--TODO we need a way to default the ListLike, IsList, StringLike, and related typclasses to array, otherwise type inference is impossible and many annotations are required.
+--It doesn't seem like this exists yet, see: http://stackoverflow.com/questions/17837970/generalized-type-defaulting-rules
+
 --TODO there is a GHC bug, should be reported:
 {-
   deriving instance ListLike Sequence Word8

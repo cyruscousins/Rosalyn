@@ -9,6 +9,7 @@ import Rosalyn.Statistics
 import Rosalyn.Trees
 import Rosalyn.Executor
 import Rosalyn.ListUtils
+import Rosalyn.Distance
 
 import System.Random
 
@@ -154,24 +155,12 @@ readsetDistance k a b =
       rs1 = kmerizeSequenceSetMS k b
    in generalizedJacardDistance rs0 rs1
 
---TODO use distance matrix module for this.
-kmersetDistanceMatrix :: [Data.MultiSet.MultiSet Kmer] -> (Int -> Int -> Ratio Int)
-kmersetDistanceMatrix items =
-  let l = length items
-      pairs :: [((Int, Data.MultiSet.MultiSet Kmer), (Int, Data.MultiSet.MultiSet Kmer))]
-      pairs = allPairsUnorderedIndexed items
-      distances :: [((Int, Int), Ratio Int)]
-      distances = map (\ ((i0, m0), (i1, m1)) -> ((i0, i1), generalizedJacardDistance m0 m1)) pairs
-      dmap :: Data.Map.Map (Int, Int) (Ratio Int)
-      dmap = Data.Map.fromList distances
-      f a b
-        | (==) a b = 0
-        | (<) b a = f b a
-        | otherwise = Data.Maybe.fromJust $ Data.Map.lookup (a, b) dmap
-   in f
-
-readSetDistanceMatrix :: Int -> [ReadSet] -> (Int -> Int -> Ratio Int)
-readSetDistanceMatrix i r = kmersetDistanceMatrix $ map (kmerizeSequenceSetMS i) r
+--TODO need a Rational distance matrix.  Here we wrap one using floating points, possibly losing a bit of precision.
+readSetDistanceMatrix :: Int -> [ReadSet] -> (Int -> Int -> (Ratio Int))
+readSetDistanceMatrix i r =
+  let dm = createDistanceMatrix (map (kmerizeSequenceSetMS i) r) (\ a b -> realToFrac $ generalizedJacardDistance a b)
+      converted a b = realToFrac $ distance dm a b
+   in converted
 
 --Sequence with reverse complementing, mutations, and chimers.
 sequenceGenomeReadAdvanced :: Genome -> (Rand Int) -> (Sequence -> Rand Sequence) -> (Rand Bool) -> (Rand SRead)
@@ -209,10 +198,9 @@ data BiasedSequencerSpec = BiasedSequencerSpec {
 --128 uniformly distributed regions, each between 1000 and 10000 nucleotides long, with between 1 and 10 samples taken from the region.  Reads are 50 to 500 bp long (this may be an unrealistically wide distribution, which is useful because it tests a strange edge case).  Uniform mutation probability 1/10, chimer probability (within a region) probability 1/10.
 basicSequencerSpec = BiasedSequencerSpec { regionCount = 128, regionSize = UniformEnum (1000, 10000), samplesPerRegion = UniformEnum (1, 10), sampleLength = UniformEnum (50, 500), mutator = mutateRead $ mutateP 0.1, chimerProbability = 0.1 }
 
+--This fuction provides a convenient wrapper for sequenceGenomeReadsBiased
 sequenceGenomeReadsBiased' :: BiasedSequencerSpec -> Genome -> (Rand ReadSet)
-sequenceGenomeReadsBiased' (BiasedSequencerSpec { regionCount = regionCount, samplesPerRegion = samplesPerRegion, regionSize = regionSize, mutator = mutator, chimerProbability = chimerProbability }) g = --TODO is there a more concise way to pattern match this?
-  let cp = Flip chimerProbability
-   in sequenceGenomeReadsBiased g regionCount samplesPerRegion regionSize samplesPerRegion mutator cp 
+sequenceGenomeReadsBiased' spec g = sequenceGenomeReadsBiased g (regionCount spec) (samplesPerRegion spec) (regionSize spec) (samplesPerRegion spec) (mutator spec) (Flip $ chimerProbability spec) 
 
 --Turn a single read into a paired read by removing the middle of it and reverse complementing one side of it.
 readToPairedRead :: Rand Int -> SRead -> Rand (SRead, SRead)
@@ -238,20 +226,8 @@ readDepth g r =
       denominator = length g
    in numerator % denominator
 
-evaluateAssemblyLD :: Genome -> Genome -> Int 
-evaluateAssemblyLD a b =
-  let (as, bs) = mapT2 toString (a, b)
-      d0 = (levenshteinDistance defaultEditCosts as bs)
-      d1 = (levenshteinDistance defaultEditCosts as (toString $ reverseComplementChar bs))
-   in min d0 d1
-
---Gives the lowest LD between a contig and the genome.
---Not a great metric.
-evaluateAssemblyContigsLD :: Genome -> [Genome] -> Int
-evaluateAssemblyContigsLD g c =
-  let lds :: [Int]
-      lds = map (evaluateAssemblyLD g) c
-   in minimum lds
+---------------
+--DNA Synthesis
 
 --An HMM capable of producing complex patterns like those found in genomic DNA.
 dnaHMM :: Prob -> Int -> (Rand (HiddenMarkovModel Int Nucleotide))
@@ -260,11 +236,9 @@ dnaHMM stayProb hiddenStates =
      emissions <- (replicateM hiddenStates $ randomDistribution nucleotides)
      return $ HiddenMarkovModel (MarkovModel (\s -> Bind (Flip stayProb) (\x -> if x then Return s else (!!) transitions s))) ((!!) emissions)
 
-
---Assembly statistics:
-jacardKmerAssemblyCoverage :: Int -> Genome -> ReadSet -> Ratio Int
-jacardKmerAssemblyCoverage i a b = jacardDistance (Set.fromList $ kmerizeSequence i a) (Set.fromList $ kmerizeSequenceSet i b)
-
-jacardSubkmerAssemblyCoverage :: Int -> Genome -> ReadSet -> Ratio Int
-jacardSubkmerAssemblyCoverage i a b = jacardDistance (Set.fromList $ subkmerizeSequence i a) (Set.fromList $ subkmerizeSequenceSet i b)
+dnaHmmSynthesize :: Double -> Int -> Int -> Rand Genome
+dnaHmmSynthesize stayProb hidden len =
+  do hmm <- (dnaHMM 0.0 256) --Random HMM to generate the genome
+     (_, g0) <- liftM (unzip :: [(a, b)] -> ([a], [b])) (hmmRand hmm 0 len) --The genome generated from the HMM
+     return g0
 

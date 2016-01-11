@@ -350,7 +350,7 @@ sampleWeighted (Bind d f) g0 = --TODO use alternate.
    in ((alternateTriangular sampleStreams), g2)
 sampleWeighted (Uniform l) g0 =
   let len = length l
-      p = (/) (fromIntegral 1) (fromIntegral len)
+      p = 1 / (fromIntegral len)
       (ls, g1) = sample (shuffleList l) g0
       samples = map (\x -> (x, p)) ls
    in (samples, g1)

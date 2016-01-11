@@ -86,7 +86,7 @@ class (Eq a, Hashable a) => Executable p a b | p -> a b where
            stdErrStream <- openFile stdErrFile WriteMode ;
            --TODO here we hack in a path back to the calling directory under "origin".  This will cause some issues if multiple programs share an execution directory, and its use violates the encapsulation of Rosalyn.  Perhaps it should point to externalBin instead, or be handled with function signatures.
            exists <- fileExist originSymLink ;
-           if exists then return () else createSymbolicLink cwd originSymLink ; --TODO 
+           unless exists $ createSymbolicLink cwd originSymLink ; --TODO think about symlink semantics.
            (_, _, _, process) <- createProcess (CreateProcess { cmdspec = (RawCommand binName args), cwd = (Just (cwd ++ "/" ++ dir)), env = Nothing, std_in = Inherit, std_out = (UseHandle stdOutStream), std_err = (UseHandle stdErrStream), close_fds = False, create_group = False, delegate_ctlc = False }) ; --TODO Inherit should be NoHandle.  Should try to isolate the process as much as possible. --TODO may need to set the path.
            _ <- waitForProcess process ; --Don't care about the exit code.
            writeFile completeFile ""
@@ -102,7 +102,7 @@ class (Eq a, Hashable a) => Executable p a b | p -> a b where
   runProgram p a =
     let dir = fullDirectory p a
      in do memoExists <- checkForMemo p a ;
-           if memoExists then (return ()) else executeProgram p a ;
+           unless memoExists $ executeProgram p a ;
            readProgramResult p a ;
   runProgramUnsafe :: p -> a -> b
   runProgramUnsafe p a = unsafePerformIO (runProgram p a)

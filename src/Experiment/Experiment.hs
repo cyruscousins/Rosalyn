@@ -43,7 +43,7 @@ spadesExperiment gLenD rLenD sections readsPerSectionD sectionLenD mutator chmD 
      hmm <- (dnaHMM 0.0 256) --Random HMM to generate the genome
      (h, g) <- liftM unzip (hmmRand hmm 0 len) --The genome generated from the HMM
      r <- sequenceGenomeReadsBiased g sections readsPerSectionD sectionLenD rLenD mutator chmD
-     return (g, r, runProgramUnsafe Spades (map (\ s -> s) r))
+     return (g, r, runProgramUnsafe Spades r)
 
 spadesExperimentDefault :: Rand (Genome, ReadSet, [(String, String)])
 spadesExperimentDefault =
@@ -57,22 +57,24 @@ spadesExperimentDefault =
       chmD = Flip 0.1 -- 1 / 10 probability of chimerization.
    in spadesExperiment gLenD rLenD sections rCountD regionLenD mutator chmD
 
-runSpadesExperimentDefault :: ((Genome, Int), ReadSet, [(String, String, Int)], Int)
+runSpadesExperimentDefault :: ((Genome, Int), ReadSet, [(String, String, Ratio Int)], Ratio Int)
 runSpadesExperimentDefault =
   let ((g, r, a), _) = (sample spadesExperimentDefault gen0)
+      contigs :: [Sequence]
+      contigs = map snd a
       gl = length g
-      evaluations = map (\ (_, y) -> (evaluateAssemblyLD g y)) a
-   in ((g, gl), r, map (\ ((a, b), c) -> (a, b, c)) (zip a evaluations), minimum evaluations)
+      contigEvaluations = map (jacardSubkmerCoverage 100 g) contigs
+      assemblyEvaluation = jacardSubkmerAssemblyCoverage 100 g contigs
+   in ((g, gl), r, map (\ ((a, b), c) -> (a, b, c)) (zip a contigEvaluations), assemblyEvaluation)
+
 
 --Takes genome length distribution, function to produce a mutated genome from an existing genome, read length distribution, section count, read per section distribution, section length distribution, read mutation function, chimer frequency, and mix ratio.
 --Produces: (((Genome 0, Size, Coverage), (Genome 1, Size, Coverage), Intergenomic edit distance), (Readset 0, Readset 1), ((Assembly 0, Assembly 1), ((Assembly 0 with mixing), Assembly 1 with mixing)), ((evaluation 0, evaluation 1), (mixing evaluation 0, mixing evaluation 1)))
 type AsmEval = (Ratio Int, Ratio Int)
 spadesExperiment2 :: Rand Int -> (Genome -> Rand Genome) -> Rand Int -> Int -> Rand Int -> Rand Int -> (String -> Rand String) -> Rand Bool -> Ratio Int -> Rand (((Genome, Int, Ratio Int), (Genome, Int, Ratio Int), Int), (ReadSet, ReadSet), (([(String, Sequence)], [(String, Sequence)]), ([(String, Sequence)], [(String, Sequence)])), ((AsmEval, AsmEval), (AsmEval, AsmEval)))
 spadesExperiment2 gLenD mutator rLenD sections readsPerSectionD sectionLenD sequenceError chmD mixRatio =
-  do --g <- randomGenome (gLenD)
-     len <- gLenD --Length of the genome
-     hmm <- (dnaHMM 0.0 256) --Random HMM to generate the genome
-     (h, g0) <- liftM unzip (hmmRand hmm 0 len) --The genome generated from the HMM
+  do len <- gLenD --Length of the genome
+     g0 <- dnaHmmSynthesize 0.0 256 len
      g1 <- mutator g0
      r0 <- sequenceGenomeReadsBiased g0 sections readsPerSectionD sectionLenD rLenD sequenceError chmD
      r1 <- sequenceGenomeReadsBiased g1 sections readsPerSectionD sectionLenD rLenD sequenceError chmD
@@ -147,8 +149,7 @@ klReadsetDistance k a b =
       (aks, bks) = mapT2 lexicographicSort (ak, bk) --Sorted lists of kmers.
       al = allListsSorted k nucleotides --All possible kmers (in sorted order).
       (aks', bks') = mapT2 (merge al) (aks, bks) --Sorted lists of kmers with pseudocount 1.
-      ar = Rosalyn.Random.fromSortedList (aks')
-      br = Rosalyn.Random.fromSortedList (bks')
+      (ar, br) = mapT2 Rosalyn.Random.fromSortedList (aks', bks')
       dist = symKlDiscrete ar br
    in sqrt $ Data.Maybe.fromJust dist --TODO is this actually a metric?
    --in if Data.Maybe.isNothing dist then -1 else Data.Maybe.fromJust dist
@@ -179,8 +180,7 @@ readsetEvaluationExperiment =
       mutator = mutateRead $ mutateP 0.1 -- 1 / 10 probability of uniform mutation
       chmD = Flip 0.1 -- 1 / 10 probability of chimerization.
    in do len <- gLenD --Length of the genome
-         hmm <- (dnaHMM 0.0 256) --Random HMM to generate the genome
-         (h, g0) <- liftM unzip (hmmRand hmm 0 len) --The genome generated from the HMM
+         g0 <- dnaHmmSynthesize 0.0 256 len
          g1 <- mutateGenomeIterated 5 g0
          r0 <- sequenceGenomeReadsBiased g0 sections readsPerSectionD sectionLenD rLenD mutator chmD
          r1 <- sequenceGenomeReadsBiased g1 sections readsPerSectionD sectionLenD rLenD mutator chmD

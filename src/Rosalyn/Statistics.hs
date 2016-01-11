@@ -1,14 +1,17 @@
 module Rosalyn.Statistics where
 
+import Rosalyn.Sequence
 import Rosalyn.ListUtils
 
 import Data.Ratio
 import Data.List
-import qualified Data.MultiSet
-import qualified Data.Set
+import qualified Data.MultiSet as MultiSet
+import qualified Data.Set as Set
 
 ---------------------
 --Assembly Statistics
+
+--Length statistics:
 
 --Input: Ratio parameterizing the statistic, estimated genome size, sizes.
 --Generalization of the NG50 statistic.
@@ -42,24 +45,36 @@ nxStatisticLength r = (nxStatistic r) . (map length)
 n50StatisticLength :: [[a]] -> Ratio Int
 n50StatisticLength = n50Statistic . (map length)
 
+--Kmer statistics
 
+jacardKmerAssemblyCoverage :: Int -> Genome -> ReadSet -> Ratio Int
+jacardKmerAssemblyCoverage i a b = jacardDistance (Set.fromList $ kmerizeSequence i a) (Set.fromList $ kmerizeSequenceSet i b)
+
+jacardSubkmerAssemblyCoverage :: Int -> Genome -> ReadSet -> Ratio Int
+jacardSubkmerAssemblyCoverage i a b = jacardDistance (Set.fromList $ subkmerizeSequence i a) (Set.fromList $ subkmerizeSequenceSet i b)
+
+jacardKmerCoverage :: Int -> Sequence -> Sequence -> Ratio Int
+jacardKmerCoverage k a b = jacardKmerAssemblyCoverage k a [b]
+
+jacardSubkmerCoverage :: Int -> Sequence -> Sequence -> Ratio Int
+jacardSubkmerCoverage k a b = jacardSubkmerAssemblyCoverage k a [b]
 -------------------
 --Jacard Statistics
 
-jacardSimilarity :: (Ord a) => Data.Set.Set a -> Data.Set.Set a -> Ratio Int
-jacardSimilarity a b = (%) (Data.Set.size (Data.Set.intersection a b)) (Data.Set.size (Data.Set.union a b))
+jacardSimilarity :: (Ord a) => Set.Set a -> Set.Set a -> Ratio Int
+jacardSimilarity a b = (%) (Set.size (Set.intersection a b)) (Set.size (Set.union a b))
 
-jacardDistance :: (Ord a) => Data.Set.Set a -> Data.Set.Set a -> Ratio Int
+jacardDistance :: (Ord a) => Set.Set a -> Set.Set a -> Ratio Int
 jacardDistance a b = 1 - (jacardSimilarity a b)
 
 --Generalized Jacard Similarity.
-generalizedJacardSimilarity :: (Ord a) => Data.MultiSet.MultiSet a -> Data.MultiSet.MultiSet a -> Ratio Int
+generalizedJacardSimilarity :: (Ord a) => MultiSet.MultiSet a -> MultiSet.MultiSet a -> Ratio Int
 generalizedJacardSimilarity a b =
-  let mins  = Data.MultiSet.intersection a b
-      maxes = Data.MultiSet.union a b
-   in (%) (Data.MultiSet.size mins) (Data.MultiSet.size maxes)
+  let mins  = MultiSet.intersection a b
+      maxes = MultiSet.union a b
+   in (%) (MultiSet.size mins) (MultiSet.size maxes)
 
-generalizedJacardDistance :: (Ord a) => Data.MultiSet.MultiSet a -> Data.MultiSet.MultiSet a -> Ratio Int
+generalizedJacardDistance :: (Ord a) => MultiSet.MultiSet a -> MultiSet.MultiSet a -> Ratio Int
 generalizedJacardDistance a b = 1 - (generalizedJacardSimilarity a b)
 
 --------------------
