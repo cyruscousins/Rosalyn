@@ -23,9 +23,11 @@ library
                        Rosalyn.External.Spades,
                        Experiment.Experiment
   build-depends:       base >= 4.7 && < 5,
-    hashable, directory, process, unix,
+    directory, process, unix,
+    hashable,
     random,
-    containers, array, bytestring, ListLike,
+    containers, multiset, array, bytestring,
+    ListLike,
     biocore,
     bioalign, edit-distance
     --bed-and-breakfast

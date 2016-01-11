@@ -664,32 +664,3 @@ euclideanDistanceList a b = sqrt (euclideanDistanceListSquared a b)
 sqrtSqrtListSimilarity :: (Floating n) => [n] -> [n] -> n
 sqrtSqrtListSimilarity a b = sum (map (\ (a, b) -> (sqrt a) * (sqrt b)) (zip a b))
 
---TODO coefficient of determination.
--- KS statistic.
-
---TODO this is horribly inefficient: there is an O(a + b) algorithm, but this is O(ab)
-auroc :: (Ord o) => [o] -> [o] -> Prob
-auroc a b = 
-  let pairs = cartesianProduct a b
-      indicators :: [Int]
-      indicators = map (\ (a, b) -> if a < b then 1 else 0) pairs
-   in (fromIntegral $ sum indicators) / (fromIntegral $ length pairs)
-
-
-{-
-auroc a b =
-  let atl = length a
-      btl = length b
-      tl = atl + btl
-      auroc' p _ _ = 
-      auroc' _ (a:al, ac) (_, bc) = 
-      auroc' p (a:al, ac) (b:bl, bc)
-       | a < b = (a - p) * ( ) / 2 + (auroc' a:al)
-       | otherwise =
-      
-      
-  let a' = map (\ x -> (x, -1)) a
-      b' = map (\ x -> (x, 1)) b
-  let mixed = sortWith snd ((map ((,) -1) a)
--}
-

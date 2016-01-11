@@ -16,7 +16,11 @@ import GHC.Exts
 
 import System.Random
 
-import Data.List
+--import Prelude hiding (length, head, last, null, tail, map, filter, concat, any, lookup, init, all, foldl, foldr, foldl1, foldr1, maximum, minimum, iterate, span, break, takeWhile, dropWhile, reverse, zip, zipWith, sequence, sequence_, mapM, mapM_, concatMap, and, or, sum, product, repeat, replicate, cycle, take, drop, splitAt, elem, notElem, unzip, lines, words, unlines, unwords)
+--import Data.ListLike hiding (fromList)
+--import qualified Data.ListLike as LL (fromList)
+import Data.List (intercalate)
+
 import Data.Ratio
 import Data.Char
 import Data.Hashable
@@ -24,73 +28,12 @@ import qualified Data.Map
 import qualified Data.Maybe
 import qualified Data.Graph
 
-import Control.Monad
+import Control.Monad hiding (mapM)
 
 import Text.EditDistance
 
 import Numeric
 
---A very poor pseudobayesian assembler.
---Procedure: Given a k to use (in kmerization), the number of iterations to run, a distribution over lengths, and a readset, pick random genomes, mutating as desired, searching for the one that is closest to containing each kmer an appropriate number of times.  Search by slight modification, biasing toward the correct size.  Distribution is assumed to have a unique maximum.
-
---Given the kmer profile and a length distribution, score an assembly (Genome).
---Lower scores represent better assemblies.
-evaluateAssembly :: (Int, Multiset Kmer, Int) -> Rand Int -> Genome -> Rational
-evaluateAssembly (k, readkmers, numKmers) lenD g =
-  let lenG = length g
-      plen = toRational $ prob lenD lenG
-      assemblyKmers :: Multiset Kmer
-      assemblyKmers = kmerizeSequenceSetMS k [g]
-      numAssemblyKmers = (-) lenG (pred k)
-      --Square error of differences between observed and expected frequencies, weighted by observed frequency.  Uses a prior that is not actually a distribution (pseudocount 1 with no denominator normalization).
-      err :: Kmer -> Int -> Rational
-      err k c = (-) ((1 + (fromIntegral (Data.Maybe.fromMaybe 0 (Data.Map.lookup k readkmers)))) % (fromIntegral numKmers)) ((fromIntegral c) % (fromIntegral numAssemblyKmers))
-      weightedSSE = Data.Map.foldlWithKey (\ res key val -> (+) ((*) ((err key val) ^ 2) ((fromIntegral val) % (fromIntegral numAssemblyKmers))) res) (0 % 1) assemblyKmers
-   in weightedSSE / plen
-
-argmin :: (Ord o) => (a -> o) -> [a] -> a
-argmin f l =
-  let argmin' [a]   = (a, f a)
-      argmin' (a:l) =
-        let (a0, m0) = argmin' l
-            m1 = f a
-         in if ((<) m1 m0)
-            then (a, m1)
-            else (a0, m0)
-      (a, m) = argmin' l
-   in a
-
-assemblePB'' :: (Int, Multiset Kmer, Int) -> (Genome, Rational) -> Int -> Rand Int -> Rand Genome
-assemblePB'' _ (g, _) 0 _ = Return g
-assemblePB'' kmers (g0, s0) count lenD =
-  do g1 <- mutateRead (mutateP 0.25) g0
-     let s1 = evaluateAssembly kmers lenD g1
-      in assemblePB'' kmers (if (<) s1 s0 then (g1, s1) else (g0, s0)) (pred count) lenD
-
-assemblePB' :: (Int, Multiset Kmer, Int) -> Int -> Int -> Rand Int -> Rand Genome
-assemblePB' kmers count countPer lenD =
-  do seeds <- mapM (const (randomGenome lenD)) [1..count]
-     genomes <- mapM (\x -> assemblePB'' kmers (x, evaluateAssembly kmers lenD x) countPer lenD) seeds
-     return (argmin (evaluateAssembly kmers lenD) genomes)
-     
-assemblePB :: Int -> Int -> Rand Int -> ReadSet -> Rand Genome
-assemblePB k count len reads =
-  let kmers = kmerizeSequenceSetMS k reads
-      totalKmers = sizeMultiset kmers
-   in assemblePB' (k, kmers, totalKmers) count count len
-
-assemblyExperiment :: Int -> Int -> Rand (Genome, Genome, Ratio Int)
-assemblyExperiment k iterations =
---  let gLenD = UniformEnum (100, 120)
---      rLenD = UniformEnum (10, 40)
---      rCountD = UniformEnum (50, 70)
-  let gLenD = UniformEnum (50, 60)
-      rLenD = UniformEnum (10, 20)
-      rCountD = UniformEnum (20, 30)
-   in do s0 <- randomGenome (gLenD)
-         r <- sequenceGenomeReads s0 rCountD rLenD
-         s1 <- assemblePB k iterations gLenD r
-         return (s0, s1, readsetDistance k [s0] [s1])
 
 --Takes genome length distribution, read length distribution, section count, read per section distribution, section length distribution, read mutation function, and chimer frequency.
 spadesExperiment :: Rand Int -> Rand Int -> Int -> Rand Int -> Rand Int -> (String -> Rand String) -> Rand Bool -> Rand (Genome, ReadSet, [(String, String)])
@@ -121,11 +64,10 @@ runSpadesExperimentDefault =
       evaluations = map (\ (_, y) -> (evaluateAssemblyLD g y)) a
    in ((g, gl), r, map (\ ((a, b), c) -> (a, b, c)) (zip a evaluations), minimum evaluations)
 
---TODO parameter for mixing degree.
---This second experiment generates a genome and a 
---Takes genome length distribution, read length distribution, section count, read per section distribution, section length distribution, read mutation function, and chimer frequency.
+--Takes genome length distribution, function to produce a mutated genome from an existing genome, read length distribution, section count, read per section distribution, section length distribution, read mutation function, chimer frequency, and mix ratio.
+--Produces: (((Genome 0, Size, Coverage), (Genome 1, Size, Coverage), Intergenomic edit distance), (Readset 0, Readset 1), ((Assembly 0, Assembly 1), ((Assembly 0 with mixing), Assembly 1 with mixing)), ((evaluation 0, evaluation 1), (mixing evaluation 0, mixing evaluation 1)))
 type AsmEval = (Ratio Int, Ratio Int)
-spadesExperiment2 :: Rand Int -> (Genome -> Rand Genome) -> Rand Int -> Int -> Rand Int -> Rand Int -> (String -> Rand String) -> Rand Bool -> Ratio Int -> Rand (((Genome, Int, Ratio Int), (Genome, Int, Ratio Int), Int), (ReadSet, ReadSet), (([(String, String)], [(String, String)]), ([(String, String)], [(String, String)])), ((AsmEval, AsmEval), (AsmEval, AsmEval)))
+spadesExperiment2 :: Rand Int -> (Genome -> Rand Genome) -> Rand Int -> Int -> Rand Int -> Rand Int -> (String -> Rand String) -> Rand Bool -> Ratio Int -> Rand (((Genome, Int, Ratio Int), (Genome, Int, Ratio Int), Int), (ReadSet, ReadSet), (([(String, Sequence)], [(String, Sequence)]), ([(String, Sequence)], [(String, Sequence)])), ((AsmEval, AsmEval), (AsmEval, AsmEval)))
 spadesExperiment2 gLenD mutator rLenD sections readsPerSectionD sectionLenD sequenceError chmD mixRatio =
   do --g <- randomGenome (gLenD)
      len <- gLenD --Length of the genome
@@ -134,12 +76,11 @@ spadesExperiment2 gLenD mutator rLenD sections readsPerSectionD sectionLenD sequ
      g1 <- mutator g0
      r0 <- sequenceGenomeReadsBiased g0 sections readsPerSectionD sectionLenD rLenD sequenceError chmD
      r1 <- sequenceGenomeReadsBiased g1 sections readsPerSectionD sectionLenD rLenD sequenceError chmD
-     r0' <- liftM ((++) r0) (randomSublistRatio mixRatio r1) --TODO parameterize this ratio.
+     r0' <- liftM ((++) r0) (randomSublistRatio mixRatio r1)
      r1' <- liftM ((++) r0) (randomSublistRatio mixRatio r0)
      let a0 = runProgramUnsafe Spades r0
          a1 = runProgramUnsafe Spades r1
-         --TODO selection should be random.
-         --Selection should be a small fraction, so it could easily be random if it doesn't support existing information.  Should shoot for coverage 1?
+         --Selection should be a small fraction, so it can be ignoredif it doesn't support existing information.  Should shoot for coverage 1?
          a0' = runProgramUnsafe Spades r0'
          a1' = runProgramUnsafe Spades r1'
          --aToEval :: Genome -> [(String, String)] -> Int
@@ -230,7 +171,7 @@ jsReadsetDistance k a b =
 --TODO parameterize to take original genomes and sequencing parameters.
 --TODO add read correction: SPADES BayesHammer should work.
 readsetEvaluationExperiment = 
-  let gLenD = UniformEnum (100, 300)
+  let gLenD = UniformEnum (1000, 2000)
       rLenD = UniformEnum (5, 50)
       sections = 32
       readsPerSectionD = UniformEnum (3, 5)
@@ -259,17 +200,18 @@ readsetEvaluationExperiment =
 --Result: ((true DM, readset DM), DM distance, auroc, full phylogeny tree (including genomes and reads))
 --TODO return read depth.
 --TODO return rank difference of distance matrices (sum of offsets?  or number of swaps required?).
-phylogenyDistanceExperiment :: Rand Int -> Rand Int -> Int -> (ReadSet -> ReadSet -> Double) -> Rand ((DistanceMatrix, DistanceMatrix), Double, Double, BinaryTree (Genome, [ReadSet]))
+phylogenyDistanceExperiment :: Rand Int -> Rand Int -> Int -> (ReadSet -> ReadSet -> Double) -> Rand ((DistanceMatrix, DistanceMatrix), Double, Ratio Int, BinaryTree (Genome, [ReadSet]))
 phylogenyDistanceExperiment gLenD tSizeD sampleCount d =
   do len <- gLenD --Length of the genome
      hmm <- (dnaHMM 0.0 256) --Random HMM to generate the genome
+     --(h, g0) <- liftM (fromList . unzip) (hmmRand hmm 0 len) --The genome generated from the HMM
      (h, g0) <- liftM unzip (hmmRand hmm 0 len) --The genome generated from the HMM
      tSize <- tSizeD
      p <- randomPhylogeny g0 tSize 5 --TODO generalize this (5 mutations per speciation).
      rsLists <- mapM (\g -> replicateM sampleCount (sequenceGenomeReadsBiased' basicSequencerSpec g)) (inOrder p)
      let p' :: BinaryTree (Genome, [ReadSet])
          p' = zipTreeList p rsLists
-         auc :: Double
+         auc :: Ratio Int
          auc = uncurry auroc $ evaluateReadsetDistanceMetric rsLists d
          rsSingle :: [ReadSet]
          rsSingle = map head rsLists
@@ -280,7 +222,7 @@ phylogenyDistanceExperiment gLenD tSizeD sampleCount d =
          dmDist = euclideanDistanceNormalizedDM trueDM rsDM
       in return ((trueDM, rsDM), dmDist, auc, p')
 
-phylogenyDistanceExperimentJS :: Rand ((DistanceMatrix, DistanceMatrix), Double, Double, BinaryTree (Genome, [ReadSet]))
+phylogenyDistanceExperimentJS :: Rand ((DistanceMatrix, DistanceMatrix), Double, Ratio Int, BinaryTree (Genome, [ReadSet]))
 phylogenyDistanceExperimentJS = phylogenyDistanceExperiment (UniformEnum (1000, 2000)) (UniformEnum (4, 6)) 3 (jsReadsetDistance 7)
 --phylogenyDistanceExperimentJS = phylogenyDistanceExperiment (UniformEnum (100, 200)) (UniformEnum (2, 3)) 2 (jsReadsetDistance 5)
 

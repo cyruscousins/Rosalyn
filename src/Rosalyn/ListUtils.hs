@@ -119,13 +119,14 @@ mergeList :: (Ord a) => [a] -> [a] -> [a]
 mergeList a [] = a
 mergeList [] b = b
 mergeList a@(ai:al) b@(bi:bl)
- | ai <= bi = ai : (merge al b)
- | otherwise = bi : (merge a bl) 
+ | ai <= bi = ai : (mergeList al b)
+ | otherwise = bi : (mergeList a bl) 
 
 --TODO can we generalize the concept of converting arguments to lists and converting the result back?  Implementing this for every function would be quite tedious.
+--A similar combinator may be useful for memoization.
 --Generic version of merge.
 merge :: (Ord a, ListLike l a) => l -> l -> l
-merge a b = fromList (merge (toList a) (toList b))
+merge a b = fromList (mergeList (toList a) (toList b))
 
 --Very generic version of merge
 mergeGeneric :: (Ord a, ListLike l0 a, ListLike l1 a, ListLike l2 a) => l0 -> l1 -> l2

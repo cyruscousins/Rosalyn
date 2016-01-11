@@ -25,10 +25,19 @@ import Bio.Core.Sequence
 import Rosalyn.Random
 
 type Nucleotide = Char
+type Nucleotide8 = Word8
+
+nucToNuc8 :: Nucleotide -> Nucleotide8
+nucToNuc8 = fromIntegral . ord
+
+nuc8ToNuc :: Nucleotide8 -> Nucleotide
+nuc8ToNuc = chr . fromIntegral
+
+fNucToNuc8 :: (Functor f) => (Nucleotide -> f Nucleotide) -> (Nucleotide8 -> f Nucleotide8)
+fNucToNuc8 f v = fmap (nucToNuc8) (f $ nuc8ToNuc v)
 
 -- #define BIO_CORE_SEQUENCE
 #ifdef BIO_CORE_SEQUENCE
---TODO preprocessor control: given an option to use a [Char]
 type Sequence = SeqData
 
 instance Hashable Sequence where --TODO can this be expressed more succinctly?
@@ -73,62 +82,42 @@ instance StringLike Sequence --Almost redundant with IsString.
   Probably an issue to do with deriving, aggravated by using so many language extension, and primitives.
 -}
 
---newtype Int2 = Int2 Int
---deriving instance Num Int2
-
-{-
-newtype SeqData = SeqData Data.ByteString.Lazy deriving (Eq, ..., ListLike) --I think.
-
-
-SeqData in Bio.Core
-
-Data.ByteString in ByteString
-
-ListLike in ListLike
-
-Sequence in Rosalyn
-
-instance ListLike Sequence
--}
-
-packSequence :: [Nucleotide] -> Sequence
-packSequence l = SeqData $ Data.ByteString.Lazy.pack (map (fromIntegral . ord) l)
---TODO we need more than just IsList, make a typeclass abstracting all basic list functions if possible.  Look into ListLike package.
-
 --TODO need an instance of traversable.  It should really be functionality of the bytestring function, but is not.
 --instance Traversable Sequence where
 --  traverse 
 
 
 --TODO this is a mess: nucleotide related operations should be abstracted better.
-
-complementW8 :: Word8 -> Word8
-complementW8 w = (fromIntegral . ord) (complement $ (chr . fromIntegral) w)
-
-reverseComplement :: Sequence -> Sequence
-reverseComplement = (map complementW8) . reverse
+complement = complementW8
 
 #else
 type Sequence = [Nucleotide]
 
-reverseComplement :: Sequence -> Sequence
-reverseComplement = (map complement) . reverse
-
+complement = complementChar
 #endif
 
 type Genome = Sequence
 type SRead = Sequence
+type Kmer = Sequence
 
 type ReadSet = [Sequence]
-type List a = [a]
 
 --Basic nucleotide operations
 
-complement :: Nucleotide -> Nucleotide
-complement 'A' = 'T'
-complement 'T' = 'A'
-complement 'G' = 'C'
-complement 'C' = 'G'
+complementChar :: Nucleotide -> Nucleotide
+complementChar 'A' = 'T'
+complementChar 'T' = 'A'
+complementChar 'G' = 'C'
+complementChar 'C' = 'G'
+
+complementW8 :: Word8 -> Word8
+complementW8 w = (fromIntegral . ord) (complementChar $ (chr . fromIntegral) w)
+
+reverseComplement :: Sequence -> Sequence
+reverseComplement = (map complement) . reverse
+
+reverseComplementChar :: String -> String
+reverseComplementChar = (map complementChar) . reverse
 
 --nucleotides :: --(IsList l) => l
 nucleotides = ['A', 'T', 'C', 'G']
