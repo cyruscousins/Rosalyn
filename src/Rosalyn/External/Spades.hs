@@ -27,8 +27,7 @@ import Rosalyn.ListUtils
 --Draft Spades interface
 
 --Singleton Spades type
-data Spades = Spades
-spades = Spades
+data Spades = Spades deriving (Eq, Generic, Hashable)
 
 instance Executable Spades [SRead] [(String, SRead)] where
   binaryName :: Spades -> String

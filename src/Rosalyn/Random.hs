@@ -1,4 +1,4 @@
-{-# LANGUAGE GADTs, ExistentialQuantification, InstanceSigs, ScopedTypeVariables, TypeFamilies #-}
+{-# LANGUAGE GADTs, ExistentialQuantification, InstanceSigs, ScopedTypeVariables, TypeFamilies, DefaultSignatures #-}
 
 module Rosalyn.Random where
 
@@ -160,10 +160,13 @@ fromSortedList a =
 
 instance (Ord a) => IsList (Rand a) where
   type Item (Rand a) = a
-  fromList :: (Ord a) => [a] -> Rand a
+  fromList :: [a] -> Rand a
+  --default fromList :: (Ord a) => [a] -> Rand a
   fromList = fromSortedList . sort
+  --TODO pattern match (or use defaults)
   toList r = map fst (sampleStream r gen0)
 
+--TODO can we provide an instance for non-ordered items?
 
 --Given a list of cumulative masses, produce an array representation.
 toWeightedCMF :: [(a, Prob)] -> Rand a
