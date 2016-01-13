@@ -1,4 +1,4 @@
-{-# LANGUAGE DeriveGeneric, DeriveAnyClass, StandaloneDeriving, TypeSynonymInstances, OverloadedLists, TypeFamilies, CPP, MultiParamTypeClasses #-}
+{-# LANGUAGE DeriveGeneric, DeriveAnyClass, StandaloneDeriving, GeneralizedNewtypeDeriving, TypeSynonymInstances, OverloadedLists, TypeFamilies, CPP, MultiParamTypeClasses #-}
 module Rosalyn.Sequence where 
 
 --This module contains code for interacting with DNA sequences.
@@ -38,28 +38,44 @@ fNucToNuc8 f v = fmap (nucToNuc8) (f $ nuc8ToNuc v)
 
 -- #define BIO_CORE_SEQUENCE
 #ifdef BIO_CORE_SEQUENCE
+
+--newtype Sequence = Data.ByteString deriving (BioSeq, IsList, IsString, FoldableLL, ListLike, ListLikeIO, StringLike)
+
 type Sequence = SeqData
 
-instance Hashable Sequence where --TODO can this be expressed more succinctly?
-  hashWithSalt i (SeqData s) = hashWithSalt i (Data.ByteString.Lazy.unpack s)
-  hash (SeqData s) = hash (Data.ByteString.Lazy.unpack s)
+--It seems as though these StandaloneDeriving instances don't use GeneralizedNewtypeDeriving.
+{-
+deriving instance Hashable Sequence
+--Instance the IsList class.  This allows the use of Sequence as an overloaded list.
+deriving instance IsList Sequence
+deriving instance IsString Sequence
+--Instance the ListLike class (and related).  This allows the use of Sequence with generic list functions.
+deriving instance FoldableLL Word8 Sequence
+deriving instance ListLike Word8 Sequence
+deriving instance ListLikeIO Sequence Word8
+deriving instance StringLike Sequence
+-}
 
---Instance the IsList class.  This allows the use of Sequence as an overloaded list.  Buckle up; it's going to be a rough ride.
---TODO use Data.ByteString's implementation.
+--TODO there is a GHC bug, should be reported:
+{-
+  deriving instance ListLike Sequence Word8
+
+  Seems to be incompatible with GHC.Word, StandaloneDeriving, and DeriveAnyClass.
+  
+  Probably an issue to do with deriving, aggravated by using so many language extension, and primitives.
+-}
+
+instance Hashable Sequence where
+  hashWithSalt i (SeqData s) = hashWithSalt i s
+  hash (SeqData s) = hash s
+
 instance IsList Sequence where
   type (Item Sequence) = Char
   fromList l = SeqData $ Data.ByteString.Lazy.pack (map (fromIntegral . ord) l) --TODO make sure this isn't packing integers into 4 bytes.
   toList (SeqData s) = map (chr . fromIntegral) $ Data.ByteString.Lazy.unpack s
-
 --TODO can we instance IsList multiple times for different types?
 --This would provide substantially more transparancy.
 
-
---instance (IsList a) => ListLike a where
---instance ListLike Sequence Word8 where
-
---TODO: This minimal complete definition is extremely inefficient, error prone, and unnecessary.
---Need to use the Data.ByteString implementation directly.
 instance FoldableLL Sequence Word8 where
   foldl f z (SeqData bs) = foldl f z bs
   foldr f z (SeqData bs) = foldr f z bs
@@ -71,24 +87,7 @@ instance ListLike Sequence Word8 where
   drop c (SeqData bs) = SeqData (drop c bs)
   --map f (SeqData bs) = SeqData (map f bs)
 instance ListLikeIO Sequence Word8
-instance StringLike Sequence --Almost redundant with IsString.
-
---TODO we need a way to default the ListLike, IsList, StringLike, and related typclasses to array, otherwise type inference is impossible and many annotations are required.
---It doesn't seem like this exists yet, see: http://stackoverflow.com/questions/17837970/generalized-type-defaulting-rules
-
---TODO there is a GHC bug, should be reported:
-{-
-  deriving instance ListLike Sequence Word8
-
-  Seems to be incompatible with GHC.Word, StandaloneDeriving, and DeriveAnyClass.
-  
-  Probably an issue to do with deriving, aggravated by using so many language extension, and primitives.
--}
-
---TODO need an instance of traversable.  It should really be functionality of the bytestring function, but is not.
---instance Traversable Sequence where
---  traverse 
-
+instance StringLike Sequence
 
 --TODO this is a mess: nucleotide related operations should be abstracted better.
 complement = complementW8
