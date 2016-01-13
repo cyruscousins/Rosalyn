@@ -13,10 +13,10 @@ import Rosalyn.ListUtils
 import System.IO
 import System.IO.Unsafe
 import System.Directory
-import System.Process
 import System.Posix.Files
 
 --Process imports
+import System.Exit
 import System.Process
 
 --Other imports
@@ -29,8 +29,11 @@ import Control.Monad
 memoizationRoot :: String
 memoizationRoot = "memo"
 
+--class Executable p where
+--  type a :: * -> * --input type.
+--  type b :: * -> * --output type.
+
 class Executable p a b | p -> a b where
-  --type (P (Executable a b)) = Executable a b
   --Inherent properties of a program (constants).
   binaryName :: p -> String --StringConstant (a, b)
   subName :: p -> String --StringConstant (a, b)
@@ -40,21 +43,36 @@ class Executable p a b | p -> a b where
   programDirectory p = (intercalate "/" [memoizationRoot, binaryName p, subName p]) ++ "/"
   executionSubdirectory :: p -> a -> String
   default executionSubdirectory :: (Hashable p, Hashable a) => p -> a -> String
-  executionSubdirectory p a = (showHex (hash p) "") ++ " " ++ (showHex (hash a) "")
+  executionSubdirectory p a =
+    let p32 :: Word32
+        p32 = fromIntegral $ hash p
+        a32 :: Word32
+        a32 = fromIntegral $ hash a
+     in (showHex p32 "") ++ " " ++ (showHex a32 "")
   fullDirectory :: p -> a -> String
   fullDirectory p a = (programDirectory p) ++ (executionSubdirectory p a) ++ "/"
   --Filesystem interaction to interface with the program.
   --TODO generalized writeOutput and output functions.
   arguments :: p -> a -> [String]
   arguments _ _ = [] --Default is no arguments.
+  --Convenience function for use with writeInput.
+  inputToString :: p -> a -> String
+  default inputToString :: (Show a) => p -> a -> String
+  inputToString _ = show
   writeInput :: p -> a -> IO ()
+  writeInput p a = writeFile "stdin" (inputToString p a)
+  outputFromString :: p -> String -> b
+  default outputFromString :: (Read b) => p -> String -> b
+  outputFromString _ = read
   readOutput :: p -> a -> IO b
-  --TODO default versions of writeInput and readInput that operate on single files.  Provide nonmonadic functions to interface with these files.
-  --Program installation
-  --install :: IO ()
-  --install = return ()
-  --checkInstallation :: IO Bool
-  --checkInstallation = undefined --TODO default should check if the binary to be executed exists.
+  readOutput p _ = fmap (outputFromString p) (readFile "stdout")
+  install :: p -> IO ()
+  install = fail "No installation protocol defined."
+  checkInstallation :: p -> IO Bool
+  checkInstallation p =
+    do (_, _, _, process) <- createProcess (CreateProcess { cmdspec = (RawCommand "which" [binaryName p]), cwd = Nothing, env = Nothing, std_in = Inherit, std_out = Inherit, std_err = Inherit, close_fds = False, create_group = False, delegate_ctlc = False }) ; --TODO replace Inherit with NoStream.
+       code <- waitForProcess process ;
+       return (code == ExitSuccess) ;
   --Program execution.  Defaults provided in terms of the above information.
   checkForMemo :: p -> a -> IO Bool
   checkForMemo p a = doesFileExist ((fullDirectory p a) ++ "complete")
@@ -62,24 +80,40 @@ class Executable p a b | p -> a b where
   executeProgram p a =
     let binName = (binaryName p)
         dir = fullDirectory p a
+        pdir = programDirectory p
+        stdInFile = dir ++ "stdin"
         stdOutFile = dir ++ "stdout"
         stdErrFile = dir ++ "stderr"
         completeFile = dir ++ "complete"
         originSymLink = dir ++ "origin"
         args = arguments p a
-     in do (createDirectoryIfMissing True dir) ;
-           cwd <- getCurrentDirectory ;
-           setCurrentDirectory (cwd ++ "/" ++ (dir)) ;
+     in do cwd <- getCurrentDirectory ;
+           --Ensure the directory exists.
+           (createDirectoryIfMissing True dir) ;
+           --Switch to the program directory (assumed to be a parent of dir).
+           setCurrentDirectory (cwd ++ "/" ++ pdir) ;
+           --See if the program is installed, and if it is not, attempt to install it .
+           installed <- checkInstallation p ;
+           unless installed $ install p ;
+           --Switch to the subdirectory for this particular execution.
+           setCurrentDirectory (cwd ++ "/" ++ dir) ;
+           --Perform necessary IO in the execution subdirectory.
            writeInput p a ;
+           --Reset the CWD of this process.
            setCurrentDirectory cwd ;
+           --Create file handles to redirect IO.
+           stdInStream <- openFile stdInFile ReadMode ;
            stdOutStream <- openFile stdOutFile WriteMode ;
            stdErrStream <- openFile stdErrFile WriteMode ;
            --TODO here we hack in a path back to the calling directory under "origin".  This will cause some issues if multiple programs share an execution directory, and its use violates the encapsulation of Rosalyn.  Perhaps it should point to externalBin instead, or be handled with function signatures.
-           exists <- fileExist originSymLink ;
-           unless exists $ createSymbolicLink cwd originSymLink ; --TODO think about symlink semantics.
-           (_, _, _, process) <- createProcess (CreateProcess { cmdspec = (RawCommand binName args), cwd = (Just (cwd ++ "/" ++ dir)), env = Nothing, std_in = Inherit, std_out = (UseHandle stdOutStream), std_err = (UseHandle stdErrStream), close_fds = False, create_group = False, delegate_ctlc = False }) ; -- Should try to isolate the process as much as possible. --TODO may need to set the path.  --TODO may want a way of accessing stdin.  TODO use NoStream in place of Inherit for stdin.
-           _ <- waitForProcess process ; --Don't care about the exit code.
-           writeFile completeFile ""
+           exists <- doesFileExist originSymLink ;
+           unless exists $ createSymbolicLink cwd originSymLink ;
+           --Create the process, pass it arguments, file handles for IO, and execute it in the proper directory.
+           (_, _, _, process) <- createProcess (CreateProcess { cmdspec = (RawCommand binName args), cwd = (Just (cwd ++ "/" ++ dir)), env = Nothing, std_in = (UseHandle stdInStream), std_out = (UseHandle stdOutStream), std_err = (UseHandle stdErrStream), close_fds = False, create_group = False, delegate_ctlc = False }) ; -- Should try to isolate the process as much as possible. --TODO may need to set the path.
+           --Wait for the process to terminate.
+           waitForProcess process ;
+           --Create a file to signal that the irectory contains a valid memo.
+           writeFile completeFile "" ;
   readProgramResult :: p -> a -> IO b
   readProgramResult p a = --TODO this allows data races when used with unsafeIO.  We need a way of encapsulating the CWD aspects of the code.
     let progDir = fullDirectory p a

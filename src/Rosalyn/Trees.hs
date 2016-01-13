@@ -170,6 +170,7 @@ constantWeightTreeDistanceMatrix edgeWeight = treeDistanceMatrix (const edgeWeig
 weightedTreeDistanceMatrix :: WeightedBinaryTree a -> DistanceMatrix
 weightedTreeDistanceMatrix = treeDistanceMatrix snd
 
+
 --Graphs
 treeGraph :: BinaryTree (a, Int) -> Data.Graph.Graph
 treeGraph Empty = Data.Graph.buildG (0, 0) []

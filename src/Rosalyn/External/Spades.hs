@@ -6,7 +6,9 @@ module Rosalyn.External.Spades where
 import GHC.Exts (IsString)
 import GHC.Generics (Generic)
 
-import System.IO.Unsafe
+import System.IO
+import System.Directory
+import System.Process
 
 import Prelude hiding (length, head, last, null, tail, map, filter, concat, any, lookup, init, all, foldl, foldr, foldl1, foldr1, maximum, minimum, iterate, span, break, takeWhile, dropWhile, reverse, zip, zipWith, sequence, sequence_, mapM, mapM_, concatMap, and, or, sum, product, repeat, replicate, cycle, take, drop, splitAt, elem, notElem, unzip, lines, words, unlines, unwords)
 import Data.List (intercalate)
@@ -30,12 +32,14 @@ import Rosalyn.ListUtils
 data Spades = Spades deriving (Eq, Generic, Hashable)
 
 instance Executable Spades [SRead] [(String, SRead)] where
+  --Constants
   binaryName :: Spades -> String
   binaryName _ = "python"
   subName :: Spades -> String
   subName _ = "spades"
+  --IO Interface
   arguments :: Spades -> [SRead] -> [String]
-  arguments _ _ = ["origin/external_bin/SPAdes-3.6.2-Linux/bin/spades.py", "--only-assembler", "--careful", "--sc", "--s1", "reads.fa", "-o", "out/"]
+  arguments _ _ = ["../bin/SPAdes-3.6.2-Linux/bin/spades.py", "--only-assembler", "--careful", "--sc", "--s1", "reads.fa", "-o", "out/"]
   writeInput :: Spades -> [SRead] -> IO ()
   writeInput _ reads =
     let outFile = "reads.fa"
@@ -43,6 +47,20 @@ instance Executable Spades [SRead] [(String, SRead)] where
      in writeFile outFile outData
   readOutput :: Spades -> [SRead] -> IO [(String, SRead)]
   readOutput _ _ = liftM fromFasta (readFile ("out/contigs.fasta"))
+  --Installation
+  install :: p -> IO ()
+  install _ =
+    do createDirectoryIfMissing True "bin" ;
+       (_, _, _, wget) <- createProcess (CreateProcess { cmdspec = (RawCommand "wget" ["http://spades.bioinf.spbau.ru/release3.6.2/SPAdes-3.6.2-Linux.tar.gz", "-O", "bin/SPAdes-3.6.2-Linux.tar.gz"]), cwd = Nothing, env = Nothing, std_in = Inherit, std_out = Inherit, std_err = Inherit, close_fds = False, create_group = False, delegate_ctlc = False }) ; --TODO use NoStream
+       waitForProcess wget ;
+       (_, _, _, tar) <- createProcess (CreateProcess { cmdspec = (RawCommand "tar" ["-xzf", "bin/SPAdes-3.6.2-Linux.tar.gz", "-C", "bin/"]), cwd = Nothing, env = Nothing, std_in = Inherit, std_out = Inherit, std_err = Inherit, close_fds = False, create_group = False, delegate_ctlc = False }) ;
+       waitForProcess tar ;
+       return ()
+  checkInstallation :: p -> IO Bool
+  checkInstallation _ =
+    do cwd <- getCurrentDirectory --TODO can we just use a function that can resolve this?
+       doesFileExist (cwd ++ "/bin/SPAdes-3.6.2-Linux/bin/spades.py")
+  --TODO need to check for and install python.
 
 -------------------------
 --PADS data definitions--
@@ -276,12 +294,4 @@ spades' = Rosalyn.Executor.Program "python" "spades" spadesArgs' spadesOut' spad
 spadesUnsafe' :: SpadesInput -> [(String, String)]
 spadesUnsafe' input = unsafePerformIO $ runProgram spades' input
 -}
-
---Spades installation (linux):
-{-
-wget http://spades.bioinf.spbau.ru/release3.5.0/SPAdes-3.5.0-Linux.tar.gz
-tar -xzf SPAdes-3.5.0-Linux.tar.gz
-cd SPAdes-3.5.0-Linux/bin/
--}
-
 

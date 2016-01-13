@@ -1,4 +1,4 @@
-{-# LANGUAGE OverloadedStrings, OverloadedLists #-}
+{-# LANGUAGE OverloadedStrings, OverloadedLists, RecordWildCards #-}
 module Rosalyn.Sequencing where
 
 import GHC.Exts
@@ -200,7 +200,7 @@ basicSequencerSpec = BiasedSequencerSpec { regionCount = 128, regionSize = Unifo
 
 --This fuction provides a convenient wrapper for sequenceGenomeReadsBiased
 sequenceGenomeReadsBiased' :: BiasedSequencerSpec -> Genome -> (Rand ReadSet)
-sequenceGenomeReadsBiased' spec g = sequenceGenomeReadsBiased g (regionCount spec) (samplesPerRegion spec) (regionSize spec) (samplesPerRegion spec) (mutator spec) (Flip $ chimerProbability spec) 
+sequenceGenomeReadsBiased' BiasedSequencerSpec{..} g = sequenceGenomeReadsBiased g regionCount samplesPerRegion regionSize samplesPerRegion mutator (Flip chimerProbability)
 
 --Turn a single read into a paired read by removing the middle of it and reverse complementing one side of it.
 readToPairedRead :: Rand Int -> SRead -> Rand (SRead, SRead)
