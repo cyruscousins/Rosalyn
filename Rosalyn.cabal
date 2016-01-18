@@ -29,7 +29,8 @@ library
     containers, multiset, array, bytestring,
     ListLike,
     biocore,
-    bioalign, edit-distance
+    bioalign, edit-distance,
+    split
     --bed-and-breakfast
     --hmm
     --QuickCheck--, QuickSpec
