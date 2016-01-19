@@ -1,7 +1,8 @@
-{-# LANGUAGE MultiParamTypeClasses, FunctionalDependencies, FlexibleInstances, DefaultSignatures, ExistentialQuantification #-}
+{-# LANGUAGE MultiParamTypeClasses, FunctionalDependencies, FlexibleInstances, DefaultSignatures, ExistentialQuantification, DeriveGeneric, DeriveAnyClass #-}
 module Rosalyn.Executor where
 
 --Logic imports
+import GHC.Generics
 import Data.Hashable
 import Data.List
 import Data.List.Split
@@ -86,13 +87,21 @@ class Executable p a b | p -> a b where
   arguments _ _ = [] --Default is no arguments.
   --Convenience function for use with writeInput.
   inputToString :: p -> a -> String
-  default inputToString :: (Show a) => p -> a -> String
-  inputToString _ = show
+  inputToString _ = undefined
+  --default inputToString :: (Show a) => p -> a -> String
+  --inputToString _ = show
+--TODO Need to use either rebindableSyntax or a generalized defaulting mechanism to get this behavior
+--    where show :: String -> String
+--          show = id
   writeInput :: p -> a -> IO ()
   writeInput p a = writeFile "stdin" (inputToString p a)
   outputFromString :: p -> String -> b
-  default outputFromString :: (Read b) => p -> String -> b
-  outputFromString _ = read
+  outputFromString _ = undefined
+  --default outputFromString :: (Read b) => p -> String -> b
+  --outputFromString _ = read
+--TODO Need to use either rebindableSyntax or a generalized defaulting mechanism to get this behavior
+--    where read :: String -> String
+--          read = id
   readOutput :: p -> a -> IO b
   readOutput p _ = fmap (outputFromString p) (readFile "stdout")
   install :: p -> IO ()
@@ -186,29 +195,41 @@ class Executable p a b | p -> a b where
   --cleanProgram p a = removeDirectoryRecursive (programDirectory p a)
   --TODO: Interface for removing intermediate results from a program directory.
 
+--Wrapper for simple local executables.
+
+data LocalExecutableText = LocalExecutableText String [String] deriving (Generic, Hashable)
+
+instance Executable LocalExecutableText String String where
+  binaryName (LocalExecutableText name _) = "origin/" ++ name
+  arguments (LocalExecutableText _ args) _ = args
+  programDirectory (LocalExecutableText name _) = (intercalate "/" [memoizationRoot, "local", name]) ++ "/"
+  --programDirectory (LocalExecutableText name _) = "local/" ++ name ++ "/"
+  inputToString p = id
+  outputFromString p = id
+  checkInstallation _ = return True --TODO: check if the binary exists and is executable.
+
+
 --Wrapper to time programs.  Uses /usr/bin/time, assuming availability of the -v and -o options.
 --TODO we could also make this a subclass with all default functions available.
 --data TimedExecutable p a b = forall p a b . (Executable p a b) => TimedExecutable p
 data TimedExecutable p a b = TimedExecutable p
 
-instance (Executable p a b) => Executable (TimedExecutable p a b) a (b, [(String, String)]) where
+instance (Executable p a b) => Executable (TimedExecutable p a b) (a, Int) (b, [(String, String)]) where
   binaryName _ = "/usr/bin/time"
-  arguments (TimedExecutable p) a = ["-v", "-o", "timeinfo", binaryName p] ++ (arguments p a)
-  programDirectory (TimedExecutable p) = (programDirectory p) ++ "timed/" 
-  executionSubdirectory (TimedExecutable p) = executionSubdirectory p
-  fullDirectory (TimedExecutable p) a = (programDirectory p) ++ (executionSubdirectory p a) ++ "/"
-  readProgramResult (TimedExecutable p) a =
-    do result <- readProgramResult p a
-       timeInfo <- (readFile "timeinfo")
-       return (result, map (\ [a, b] -> (a, b)) $ filter (\ x -> length x == 2) $ map (splitOn ": ") $ lines timeInfo)
-  inputToString (TimedExecutable p) a = inputToString p a
-  outputFromString (TimedExecutable p) b = undefined -- outputFromString p b
-
-{-
-data DynamicExecutable = DynamicExecutable 
-
-instance Executable DynamicExecutable where
-  binaryName DynamicExecutable (name, _) _ _ _ = name
-  subName DynamicExecutable (_, subname) _ _ _ = name
--}
+  arguments (TimedExecutable p) (a, _) = ["-v", "-o", "timeinfo", binaryName p] ++ (arguments p a)
+  programDirectory (TimedExecutable p) = programDirectory p ++ "timed/" --TODO Note that this is flawed composability: ideally timed would get its own top level program directory.
+  executionSubdirectory (TimedExecutable p) (a, i) = (show i) ++ "/" ++ (executionSubdirectory p a)
+  writeInput (TimedExecutable p) (a, i) = writeInput p a
+  readOutput (TimedExecutable p) (a, i) =
+    let processTimeInfo :: String -> (String, String)
+        processTimeInfo s =
+          let s' = dropWhile ((==) '\t') s
+              splitter = ": "
+              (a:b) = splitOn splitter s'
+              pairs = (a, intercalate splitter b)
+           in pairs
+     in do result <- readOutput p a
+           timeInfo <- readFile "timeinfo"
+           return (result, (map processTimeInfo $ lines timeInfo))
+  checkInstallation (TimedExecutable p) = (checkInstallation p)
 
