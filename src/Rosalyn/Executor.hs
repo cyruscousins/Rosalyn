@@ -73,12 +73,8 @@ class Executable p a b | p -> a b where
   programDirectory p = (intercalate "/" [memoizationRoot, binaryName p, subName p]) ++ "/"
   executionSubdirectory :: p -> a -> String
   default executionSubdirectory :: (Hashable p, Hashable a) => p -> a -> String
-  executionSubdirectory p a =
-    let p32 :: Word32
-        p32 = fromIntegral $ hash p
-        a32 :: Word32
-        a32 = fromIntegral $ hash a --TODO use hashString256
-     in (showHex p32 "") ++ " " ++ (showHex a32 "")
+  --executionSubdirectory p a = (hashStringNWords 1 p) ++ " " ++ (hashString256 a) ++ "/"
+  executionSubdirectory p a = (hashStringNWords 1 p) ++ " " ++ (hashStringNWords 1 a) ++ "/"
   fullDirectory :: p -> a -> String
   fullDirectory p a = (programDirectory p) ++ (executionSubdirectory p a) ++ "/"
   --Filesystem interaction to interface with the program.
